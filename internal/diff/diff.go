@@ -27,8 +27,8 @@ type RepoFile struct {
 type PatternOccurrence struct {
 	Repo    string
 	File    string
-	Line    int
 	Content string
+	Line    int
 }
 
 func CompareFile(cfg *config.Config, wsDir, fileName string) ([]FileComparison, error) {
@@ -106,7 +106,7 @@ func SearchPattern(cfg *config.Config, wsDir, pattern string) (map[string][]Patt
 			if err != nil {
 				return nil
 			}
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 
 			relPath := strings.TrimPrefix(path, repoPath+"/")
 			scanner := bufio.NewScanner(f)
@@ -172,12 +172,12 @@ func DiffFiles(file1, file2 RepoFile) (string, error) {
 	if err := os.WriteFile(f1Path, []byte(file1.Content), 0600); err != nil {
 		return "", err
 	}
-	defer os.Remove(f1Path)
+	defer func() { _ = os.Remove(f1Path) }()
 
 	if err := os.WriteFile(f2Path, []byte(file2.Content), 0600); err != nil {
 		return "", err
 	}
-	defer os.Remove(f2Path)
+	defer func() { _ = os.Remove(f2Path) }()
 
 	cmd := exec.Command("diff", "-u",
 		fmt.Sprintf("--label=%s:%s", file1.Repo, file1.Path),

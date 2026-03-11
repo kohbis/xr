@@ -14,19 +14,19 @@ import (
 )
 
 type Options struct {
-	Pattern     string
-	Glob        string
-	IgnoreCase  bool
-	Context     int
-	UseRegex    bool
-	RepoFilter  []string
+	RepoFilter []string
+	Pattern    string
+	Glob       string
+	Context    int
+	IgnoreCase bool
+	UseRegex   bool
 }
 
 type Match struct {
-	Repo    string
-	File    string
-	Line    int
-	Content string
+	Repo      string
+	File      string
+	Content   string
+	Line      int
 	IsContext bool
 }
 
@@ -123,7 +123,9 @@ func parseRipgrepOutput(repoName, repoPath, output string, hasContext bool) ([]M
 
 		filePath := strings.TrimPrefix(parts[0], repoPath+"/")
 		lineNum := 0
-		fmt.Sscanf(parts[1], "%d", &lineNum)
+		if _, err := fmt.Sscanf(parts[1], "%d", &lineNum); err != nil {
+			continue
+		}
 		content := parts[2]
 
 		matches = append(matches, Match{
@@ -176,8 +178,8 @@ func searchBuiltin(repoName, repoPath string, opts Options) ([]Match, error) {
 		}
 
 		if opts.Glob != "" {
-			matched, err := filepath.Match(opts.Glob, info.Name())
-			if err != nil || !matched {
+			matched, globErr := filepath.Match(opts.Glob, info.Name())
+			if globErr != nil || !matched {
 				return nil
 			}
 		}
@@ -198,7 +200,7 @@ func searchFile(repoName, repoPath, filePath string, pattern *regexp.Regexp, con
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var lines []string
 	scanner := bufio.NewScanner(f)
