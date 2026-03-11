@@ -11,8 +11,8 @@ import (
 )
 
 type Workspace struct {
-	Root   string
 	Config *config.Config
+	Root   string
 }
 
 func New(root string, cfg *config.Config) *Workspace {
@@ -157,7 +157,6 @@ func (w *Workspace) Update(repoNames []string, pull bool) error {
 
 	return nil
 }
-
 
 func (w *Workspace) updateSymlink(repo config.Repository, destPath string) error {
 	info, err := os.Lstat(destPath)
