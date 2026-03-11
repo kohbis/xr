@@ -1,0 +1,17 @@
+workspace: ./repos           # directory where repos will be placed
+
+repositories:
+  - name: project-a
+    source: git@github.com:user/project-a.git
+    branch: main
+    path: project-a          # relative path within workspace
+
+  - name: project-b
+    source: git@github.com:user/project-b.git
+    branch: develop
+    path: project-b
+
+  - name: local-lib
+    source: /Users/kohbis/workspace/local-lib  # local path -> symlink
+    type: symlink
+    path: local-lib
