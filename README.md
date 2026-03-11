@@ -6,6 +6,14 @@ Cross-repository search & management CLI.
 
 ## Installation
 
+### Homebrew (macOS / Linux)
+
+```sh
+brew install kohbis/xr/xr
+```
+
+### go install
+
 ```sh
 go install github.com/kohbis/xr@latest
 ```
