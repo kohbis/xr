@@ -23,19 +23,19 @@ var depFiles = map[string]string{
 }
 
 type RepoInfo struct {
+	LastUpdated time.Time
+	Children    []*Node
 	Name        string
 	Path        string
 	Language    string
 	FileCount   int
-	LastUpdated time.Time
-	Children    []*Node
 }
 
 type Node struct {
+	Children []*Node
 	Name     string
 	IsDir    bool
 	IsDep    bool
-	Children []*Node
 }
 
 func AnalyzeRepo(name, repoPath string, maxDepth int) (*RepoInfo, error) {

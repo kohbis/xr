@@ -22,18 +22,12 @@ func PrintRepoHeader(name string) {
 
 func PrintMatch(repo, file string, line int, content string, isContext bool) {
 	if isContext {
-		fmt.Printf("%s%s%s%s%s%d%s%s%s%s\n",
-			colorDim, repo, colorReset,
-			colorDim, ":", colorReset,
-			colorDim, file, colorReset,
-			colorDim,
-		)
 		fmt.Printf("  %s%d%s-%s\n", colorDim, line, colorReset, content)
 	} else {
-		fmt.Printf("%s%s%s:%s%s%s:%s%s%d%s:%s\n",
+		fmt.Printf("%s%s%s:%s%s%s:%s%d%s:%s\n",
 			colorGreen, repo, colorReset,
 			colorBlue, file, colorReset,
-			colorYellow, fmt.Sprint(line), colorReset,
+			colorYellow, line, colorReset,
 			content,
 		)
 	}
