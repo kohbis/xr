@@ -18,6 +18,28 @@ brew install kohbis/xr/xr
 go install github.com/kohbis/xr@latest
 ```
 
+## Prerequisites
+
+`xr` shells out to the following external commands at runtime:
+
+| Command | Required | Used by | Purpose |
+|---------|----------|---------|---------|
+| `git` | **Yes** | `xr init`, `xr update`, `xr diff --history` | Repository initialization, submodule management, commit history search |
+| `diff` | Yes (pre-installed) | `xr diff --file` | Unified diff output between files across repositories |
+| `rg` (ripgrep) | No | `xr search` | Fast search engine; falls back to a built-in implementation if not found |
+
+Install missing tools as needed:
+
+```sh
+# git (usually pre-installed)
+# macOS
+brew install git
+
+# ripgrep (optional but recommended for better search performance)
+brew install ripgrep        # macOS
+sudo apt install ripgrep    # Debian/Ubuntu
+```
+
 ## Setup
 
 Copy the example config and edit it:
