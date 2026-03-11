@@ -24,7 +24,7 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
-brews:
+homebrew_casks:
   - name: xr
     repository:
       owner: kohbis
@@ -33,10 +33,6 @@ brews:
     homepage: "https://github.com/kohbis/xr"
     description: "xr - manage multiple git repositories"
     license: "MIT"
-    install: |
-      bin.install "xr"
-    test: |
-      system "#{bin}/xr --help"
 
 changelog:
   sort: asc
