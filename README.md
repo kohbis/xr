@@ -24,7 +24,7 @@ go install github.com/kohbis/xr@latest
 
 | Command | Required | Used by | Purpose |
 |---------|----------|---------|---------|
-| `git` | **Yes** | `xr init`, `xr update`, `xr diff --history` | Repository initialization, submodule management, commit history search |
+| `git` | **Yes** | `xr init`, `xr update`, `xr import`, `xr diff --history` | Repository initialization, submodule management, commit history search |
 | `diff` | Yes (pre-installed) | `xr diff --file` | Unified diff output between files across repositories |
 | `rg` (ripgrep) | No | `xr search` | Fast search engine; falls back to a built-in implementation if not found |
 
@@ -78,6 +78,33 @@ xr init -f path/to/repos.yaml my-workspace
 ```
 
 If `repos.yaml` is not found, you will be prompted to either create one interactively or initialize without repos (creates a `README.md` only).
+
+### `xr gitignore`
+
+Interactively add the workspace directory to `.gitignore`.
+
+```sh
+xr gitignore
+```
+
+### `xr import`
+
+Import repositories that already exist in the workspace directory into `repos.yaml`. Detects clones, submodules, and symlinks, shows a diff against the current config, and prompts before writing.
+
+```sh
+xr import            # interactive: preview then confirm
+xr import --dry-run  # preview only, no writes
+```
+
+Example output:
+
+```
+Found 2 new repo(s):
+  + my-lib               clone    https://github.com/foo/my-lib.git
+  + local-tools          symlink  /Users/kohbis/workspace/local-tools
+
+Add these to repos.yaml? [y/N]:
+```
 
 ### `xr update [repo...]`
 
