@@ -13,8 +13,8 @@ import (
 
 var gitignoreCmd = &cobra.Command{
 	Use:   "gitignore",
-	Short: "Create or update .gitignore",
-	Long:  `Create or update .gitignore in the current workspace.`,
+	Short: "Update .gitignore",
+	Long:  `Add workspace directory entries to .gitignore in the current workspace.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := loadConfig()
 		if err != nil {

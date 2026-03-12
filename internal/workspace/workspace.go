@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/kohbis/xr/internal/config"
@@ -56,7 +57,7 @@ func (w *Workspace) CreateGitignore(ignoreWorkspace bool) error {
 	entry := strings.TrimPrefix(w.Config.Workspace, "./") + "/"
 
 	if ignoreWorkspace {
-		if strings.Contains(string(existing), entry) {
+		if containsLine(string(existing), entry) {
 			fmt.Printf("  %s is already in .gitignore\n", entry)
 			return nil
 		}
@@ -69,12 +70,24 @@ func (w *Workspace) CreateGitignore(ignoreWorkspace bool) error {
 		return os.WriteFile(gitignorePath, []byte(content), 0644)
 	}
 
-	if len(existing) == 0 {
-		fmt.Println("  creating empty .gitignore")
-		return os.WriteFile(gitignorePath, []byte{}, 0644)
-	}
 	fmt.Println("  .gitignore unchanged")
 	return nil
+}
+
+func containsLine(content, line string) bool {
+	normalized := normalizeGitignoreLine(line)
+	for _, l := range strings.Split(content, "\n") {
+		if normalizeGitignoreLine(strings.TrimSpace(l)) == normalized {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeGitignoreLine(s string) string {
+	s = strings.TrimPrefix(s, "./")
+	s = strings.TrimPrefix(s, "/")
+	return s
 }
 
 func (w *Workspace) createReadme() error {
@@ -108,7 +121,10 @@ func (w *Workspace) addRepo(repo config.Repository, wsDir string) error {
 	if repo.IsSymlink() {
 		return w.addSymlink(repo, destPath)
 	}
-	return w.addSubmodule(repo, destPath, wsDir)
+	if repo.IsClone() {
+		return w.addClone(repo, destPath)
+	}
+	return w.addSubmodule(repo, destPath)
 }
 
 func expandTilde(path string) string {
@@ -134,7 +150,7 @@ func (w *Workspace) addSymlink(repo config.Repository, destPath string) error {
 	return nil
 }
 
-func (w *Workspace) addSubmodule(repo config.Repository, destPath string, wsDir string) error {
+func (w *Workspace) addSubmodule(repo config.Repository, destPath string) error {
 	if _, err := os.Stat(destPath); err == nil {
 		fmt.Printf("  submodule %s already exists, skipping\n", repo.Name)
 		return nil
@@ -147,7 +163,9 @@ func (w *Workspace) addSubmodule(repo config.Repository, destPath string, wsDir 
 
 	fmt.Printf("  adding submodule %s from %s\n", repo.Name, repo.Source)
 
-	args := []string{"submodule", "add"}
+	// -f is required because the workspace directory may be listed in .gitignore
+	// (added by `xr gitignore`), which would otherwise prevent git submodule add.
+	args := []string{"submodule", "add", "-f"}
 	if repo.Branch != "" {
 		args = append(args, "-b", repo.Branch)
 	}
@@ -163,23 +181,56 @@ func (w *Workspace) addSubmodule(repo config.Repository, destPath string, wsDir 
 	return nil
 }
 
+
+func (w *Workspace) addClone(repo config.Repository, destPath string) error {
+	if _, err := os.Stat(destPath); err == nil {
+		fmt.Printf("  clone %s already exists, skipping\n", repo.Name)
+		return nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return fmt.Errorf("creating parent directory: %w", err)
+	}
+
+	fmt.Printf("  cloning %s from %s\n", repo.Name, repo.Source)
+
+	args := []string{"clone"}
+	if repo.Branch != "" {
+		args = append(args, "-b", repo.Branch)
+	}
+	args = append(args, repo.Source, destPath)
+
+	cmd := exec.Command("git", args...)
+	cmd.Dir = w.Root
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git clone: %w", err)
+	}
+
+	return nil
+}
+
 func (w *Workspace) Update(repoNames []string, pull bool) error {
 	wsDir := filepath.Join(w.Root, w.Config.Workspace)
 
 	for _, repo := range w.Config.Repositories {
-		if len(repoNames) > 0 && !contains(repoNames, repo.Name) {
+		if len(repoNames) > 0 && !slices.Contains(repoNames, repo.Name) {
 			continue
 		}
 
 		destPath := filepath.Join(wsDir, repo.Path)
-		if repo.IsSymlink() {
-			if err := w.updateSymlink(repo, destPath); err != nil {
-				fmt.Printf("  warning: %s: %v\n", repo.Name, err)
-			}
-		} else {
-			if err := w.updateSubmodule(repo, destPath, pull); err != nil {
-				fmt.Printf("  warning: %s: %v\n", repo.Name, err)
-			}
+		var err error
+		switch {
+		case repo.IsSymlink():
+			err = w.updateSymlink(repo, destPath)
+		case repo.IsClone():
+			err = w.updateClone(repo, destPath, pull)
+		default:
+			err = w.updateSubmodule(repo, destPath, pull)
+		}
+		if err != nil {
+			fmt.Printf("  warning: %s: %v\n", repo.Name, err)
 		}
 	}
 
@@ -210,8 +261,7 @@ func (w *Workspace) updateSymlink(repo config.Repository, destPath string) error
 
 func (w *Workspace) updateSubmodule(repo config.Repository, destPath string, pull bool) error {
 	if _, err := os.Stat(destPath); os.IsNotExist(err) {
-		wsDir := filepath.Join(w.Root, w.Config.Workspace)
-		return w.addSubmodule(repo, destPath, wsDir)
+		return w.addSubmodule(repo, destPath)
 	}
 
 	fmt.Printf("  updating submodule %s\n", repo.Name)
@@ -238,11 +288,28 @@ func (w *Workspace) updateSubmodule(repo config.Repository, destPath string, pul
 	return nil
 }
 
-func contains(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
+func (w *Workspace) updateClone(repo config.Repository, destPath string, pull bool) error {
+	if _, err := os.Stat(destPath); os.IsNotExist(err) {
+		return w.addClone(repo, destPath)
 	}
-	return false
+
+	if pull {
+		fmt.Printf("  pulling %s\n", repo.Name)
+		args := []string{"pull", "origin"}
+		if repo.Branch != "" {
+			args = append(args, repo.Branch)
+		}
+		cmd := exec.Command("git", args...)
+		cmd.Dir = destPath
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("git pull: %w", err)
+		}
+	} else {
+		fmt.Printf("  clone %s ok\n", repo.Name)
+	}
+
+	return nil
 }
+
