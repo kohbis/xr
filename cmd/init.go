@@ -96,6 +96,15 @@ and creates symlinks for local repos.`,
 			return fmt.Errorf("initializing workspace: %w", err)
 		}
 
+		fmt.Printf("\nAdd repos directory (%s) to .gitignore? [y/N]: ", cfg.Workspace)
+		ignoreAnswer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		ignoreAnswer = strings.TrimSpace(strings.ToLower(ignoreAnswer))
+		ignoreWorkspace := ignoreAnswer == "y" || ignoreAnswer == "yes"
+
+		if err := ws.CreateGitignore(ignoreWorkspace); err != nil {
+			return fmt.Errorf("creating .gitignore: %w", err)
+		}
+
 		fmt.Printf("\nWorkspace initialized successfully.\n")
 		fmt.Printf("Run 'xr update' to sync submodules.\n")
 		return nil
