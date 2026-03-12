@@ -12,6 +12,7 @@ type RepoType string
 const (
 	RepoTypeGit     RepoType = "git"
 	RepoTypeSymlink RepoType = "symlink"
+	RepoTypeClone   RepoType = "clone"
 )
 
 type Repository struct {
@@ -44,7 +45,17 @@ func Load(path string) (*Config, error) {
 
 	for i, repo := range cfg.Repositories {
 		if repo.Type == "" {
-			cfg.Repositories[i].Type = RepoTypeGit
+			if len(repo.Source) > 0 && (repo.Source[0] == '/' || repo.Source[0] == '~') {
+				cfg.Repositories[i].Type = RepoTypeSymlink
+			} else {
+				cfg.Repositories[i].Type = RepoTypeGit
+			}
+		}
+		switch cfg.Repositories[i].Type {
+		case RepoTypeGit, RepoTypeSymlink, RepoTypeClone:
+			// valid
+		default:
+			return nil, fmt.Errorf("repository %q: unknown type %q", repo.Name, repo.Type)
 		}
 		if repo.Path == "" {
 			cfg.Repositories[i].Path = repo.Name
@@ -55,14 +66,11 @@ func Load(path string) (*Config, error) {
 }
 
 func (r *Repository) IsSymlink() bool {
-	if r.Type == RepoTypeSymlink {
-		return true
-	}
-	// Heuristic: local paths (absolute or home-relative) are symlinks
-	if len(r.Source) > 0 && (r.Source[0] == '/' || r.Source[0] == '~') {
-		return true
-	}
-	return false
+	return r.Type == RepoTypeSymlink
+}
+
+func (r *Repository) IsClone() bool {
+	return r.Type == RepoTypeClone
 }
 
 func Save(path string, cfg *Config) error {
