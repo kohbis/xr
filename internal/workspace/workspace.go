@@ -313,3 +313,100 @@ func (w *Workspace) updateClone(repo config.Repository, destPath string, pull bo
 	return nil
 }
 
+// ScanRepos scans the workspace directory and detects repositories.
+func (w *Workspace) ScanRepos() ([]config.Repository, error) {
+	wsDir := filepath.Join(w.Root, w.Config.Workspace)
+	entries, err := os.ReadDir(wsDir)
+	if err != nil {
+		return nil, fmt.Errorf("reading workspace directory: %w", err)
+	}
+
+	var repos []config.Repository
+	for _, entry := range entries {
+		repo, err := detectRepo(wsDir, entry)
+		if err != nil {
+			fmt.Printf("  warning: skipping %s: %v\n", entry.Name(), err)
+			continue
+		}
+		if repo == nil {
+			continue
+		}
+		if repo.Source == "" {
+			fmt.Printf("  warning: %s: no origin remote found, source will be empty\n", repo.Name)
+		}
+		repos = append(repos, *repo)
+	}
+	return repos, nil
+}
+
+func detectRepo(wsDir string, entry os.DirEntry) (*config.Repository, error) {
+	name := entry.Name()
+	path := filepath.Join(wsDir, name)
+
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, fmt.Errorf("lstat: %w", err)
+	}
+
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(path)
+		if err != nil {
+			return nil, fmt.Errorf("readlink: %w", err)
+		}
+		return &config.Repository{
+			Name:   name,
+			Path:   name,
+			Type:   config.RepoTypeSymlink,
+			Source: target,
+		}, nil
+	}
+
+	if !entry.IsDir() {
+		return nil, nil
+	}
+
+	gitPath := filepath.Join(path, ".git")
+	gitInfo, err := os.Stat(gitPath)
+	if err != nil {
+		return nil, nil
+	}
+
+	var repoType config.RepoType
+	if gitInfo.IsDir() {
+		repoType = config.RepoTypeClone
+	} else {
+		repoType = config.RepoTypeGit
+	}
+
+	source := gitRemoteURL(path)
+	branch := gitCurrentBranch(path)
+
+	return &config.Repository{
+		Name:   name,
+		Path:   name,
+		Type:   repoType,
+		Source: source,
+		Branch: branch,
+	}, nil
+}
+
+func gitRemoteURL(dir string) string {
+	cmd := exec.Command("git", "remote", "get-url", "origin")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func gitCurrentBranch(dir string) string {
+	cmd := exec.Command("git", "branch", "--show-current")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
