@@ -49,6 +49,34 @@ func (w *Workspace) Init() error {
 	return nil
 }
 
+func (w *Workspace) CreateGitignore(ignoreWorkspace bool) error {
+	gitignorePath := filepath.Join(w.Root, ".gitignore")
+
+	existing, _ := os.ReadFile(gitignorePath)
+	entry := strings.TrimPrefix(w.Config.Workspace, "./") + "/"
+
+	if ignoreWorkspace {
+		if strings.Contains(string(existing), entry) {
+			fmt.Printf("  %s is already in .gitignore\n", entry)
+			return nil
+		}
+		content := string(existing)
+		if len(content) > 0 && !strings.HasSuffix(content, "\n") {
+			content += "\n"
+		}
+		content += entry + "\n"
+		fmt.Printf("  adding %s to .gitignore\n", entry)
+		return os.WriteFile(gitignorePath, []byte(content), 0644)
+	}
+
+	if len(existing) == 0 {
+		fmt.Println("  creating empty .gitignore")
+		return os.WriteFile(gitignorePath, []byte{}, 0644)
+	}
+	fmt.Println("  .gitignore unchanged")
+	return nil
+}
+
 func (w *Workspace) createReadme() error {
 	readmePath := filepath.Join(w.Root, "README.md")
 	if _, err := os.Stat(readmePath); err == nil {
