@@ -181,7 +181,6 @@ func (w *Workspace) addSubmodule(repo config.Repository, destPath string) error 
 	return nil
 }
 
-
 func (w *Workspace) addClone(repo config.Repository, destPath string) error {
 	if _, err := os.Stat(destPath); err == nil {
 		fmt.Printf("  clone %s already exists, skipping\n", repo.Name)
@@ -409,4 +408,3 @@ func gitCurrentBranch(dir string) string {
 	}
 	return strings.TrimSpace(string(out))
 }
-
