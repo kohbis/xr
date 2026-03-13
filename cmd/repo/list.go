@@ -19,9 +19,13 @@ var listCmd = &cobra.Command{
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tTYPE\tBRANCH\tPATH\tSOURCE")
+		if _, err := fmt.Fprintln(w, "NAME\tTYPE\tBRANCH\tPATH\tSOURCE"); err != nil {
+			return err
+		}
 		for _, r := range cfg.Repositories {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", r.Name, r.Type, r.Branch, r.Path, r.Source)
+			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", r.Name, r.Type, r.Branch, r.Path, r.Source); err != nil {
+				return err
+			}
 		}
 		return w.Flush()
 	},
