@@ -1,4 +1,4 @@
-package cmd
+package repo
 
 import (
 	"bufio"
@@ -20,7 +20,7 @@ var importCmd = &cobra.Command{
 	Short: "Import existing repositories into repos.yaml",
 	Long:  `Scan the workspace directory for repositories and add new ones to repos.yaml.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfgPath := cfgFile
+		cfgPath := cmd.Root().PersistentFlags().Lookup("config").Value.String()
 		if cfgPath == "" {
 			cfgPath = "repos.yaml"
 		}
@@ -34,7 +34,7 @@ var importCmd = &cobra.Command{
 			}
 		}
 
-		wsDir, err := resolveWorkspaceDir(cfg)
+		wsDir, err := filepath.Abs(cfg.Workspace)
 		if err != nil {
 			return err
 		}
@@ -91,6 +91,5 @@ var importCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(importCmd)
 	importCmd.Flags().BoolVar(&importDryRun, "dry-run", false, "preview only, do not write")
 }

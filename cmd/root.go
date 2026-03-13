@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/kohbis/xr/cmd/repo"
 	"github.com/spf13/cobra"
 )
 
@@ -25,4 +26,5 @@ func Execute() {
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: repos.yaml in current directory)")
+	rootCmd.AddCommand(repo.Cmd)
 }

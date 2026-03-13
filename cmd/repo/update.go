@@ -1,10 +1,9 @@
-package cmd
+package repo
 
 import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/workspace"
 	"github.com/spf13/cobra"
 )
@@ -17,12 +16,12 @@ var updateCmd = &cobra.Command{
 	Long: `Update repositories in the workspace. Without arguments, updates all repos.
 Specify repo names to update only those repos.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig()
+		cfg, err := loadConfig(cmd)
 		if err != nil {
 			return err
 		}
 
-		wsDir, err := resolveWorkspaceDir(cfg)
+		wsDir, err := filepath.Abs(cfg.Workspace)
 		if err != nil {
 			return err
 		}
@@ -40,18 +39,5 @@ Specify repo names to update only those repos.`,
 }
 
 func init() {
-	rootCmd.AddCommand(updateCmd)
 	updateCmd.Flags().BoolVar(&updatePull, "pull", false, "pull latest changes from remote")
-}
-
-func loadConfig() (*config.Config, error) {
-	cfgPath := cfgFile
-	if cfgPath == "" {
-		cfgPath = "repos.yaml"
-	}
-	return config.Load(cfgPath)
-}
-
-func resolveWorkspaceDir(cfg *config.Config) (string, error) {
-	return filepath.Abs(cfg.Workspace)
 }
