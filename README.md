@@ -24,7 +24,7 @@ go install github.com/kohbis/xr@latest
 
 | Command | Required | Used by | Purpose |
 |---------|----------|---------|---------|
-| `git` | **Yes** | `xr init`, `xr update`, `xr import`, `xr diff --history` | Repository initialization, submodule management, commit history search |
+| `git` | **Yes** | `xr init`, `xr repo update`, `xr repo import`, `xr diff --history` | Repository initialization, submodule management, commit history search |
 | `diff` | Yes (pre-installed) | `xr diff --file` | Unified diff output between files across repositories |
 | `rg` (ripgrep) | No | `xr search` | Fast search engine; falls back to a built-in implementation if not found |
 
@@ -87,13 +87,43 @@ Interactively add the workspace directory to `.gitignore`.
 xr gitignore
 ```
 
-### `xr import`
+### `xr repo`
+
+Manage repositories in the workspace.
+
+#### `xr repo list`
+
+List all repositories defined in `repos.yaml`.
+
+```sh
+xr repo list
+```
+
+Example output:
+
+```
+NAME         TYPE      BRANCH  PATH         SOURCE
+project-a    git       main    project-a    git@github.com:user/project-a.git
+local-lib    symlink           local-lib    /Users/kohbis/workspace/local-lib
+```
+
+#### `xr repo update [repo...]`
+
+Update repositories in the workspace. Without arguments, updates all repos.
+
+```sh
+xr repo update
+xr repo update project-a
+xr repo update --pull     # also pull latest changes from remote
+```
+
+#### `xr repo import`
 
 Import repositories that already exist in the workspace directory into `repos.yaml`. Detects clones, submodules, and symlinks, shows a diff against the current config, and prompts before writing.
 
 ```sh
-xr import            # interactive: preview then confirm
-xr import --dry-run  # preview only, no writes
+xr repo import            # interactive: preview then confirm
+xr repo import --dry-run  # preview only, no writes
 ```
 
 Example output:
@@ -104,16 +134,6 @@ Found 2 new repo(s):
   + local-tools          symlink  /Users/kohbis/workspace/local-tools
 
 Add these to repos.yaml? [y/N]:
-```
-
-### `xr update [repo...]`
-
-Update repositories in the workspace. Without arguments, updates all repos.
-
-```sh
-xr update
-xr update project-a
-xr update --pull     # also pull latest changes from remote
 ```
 
 ### `xr search <pattern>`
