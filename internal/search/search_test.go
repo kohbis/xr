@@ -266,6 +266,109 @@ func TestSearch_RepoFilter(t *testing.T) {
 	}
 }
 
+func TestSearch_BuiltinMultiRepo(t *testing.T) {
+	dir := t.TempDir()
+	reposDir := filepath.Join(dir, "repos")
+	for _, name := range []string{"app", "lib"} {
+		repoDir := filepath.Join(reposDir, name)
+		if err := os.MkdirAll(repoDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repoDir, "main.go"), []byte("package main\nimport \"fmt\"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(reposDir, "lib", "extra.go"), []byte("package lib\nimport \"fmt\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "app", Path: "app", Type: config.RepoTypeClone},
+			{Name: "lib", Path: "lib", Type: config.RepoTypeClone},
+		},
+	}
+
+	matches, err := searchBuiltin("app", filepath.Join(reposDir, "app"), Options{Pattern: "fmt"})
+	if err != nil {
+		t.Fatalf("searchBuiltin() error = %v", err)
+	}
+	if len(matches) != 1 {
+		t.Errorf("app: got %d matches, want 1", len(matches))
+	}
+
+	allMatches, err := Search(cfg, reposDir, Options{Pattern: "fmt"})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+
+	appCount, libCount := 0, 0
+	for _, m := range allMatches {
+		switch m.Repo {
+		case "app":
+			appCount++
+		case "lib":
+			libCount++
+		}
+	}
+	if appCount != 1 {
+		t.Errorf("app matches = %d, want 1", appCount)
+	}
+	if libCount != 2 {
+		t.Errorf("lib matches = %d, want 2 (main.go + extra.go)", libCount)
+	}
+}
+
+func TestSearch_SkipsMissingRepo(t *testing.T) {
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "ghost", Path: "ghost", Type: config.RepoTypeClone},
+		},
+	}
+
+	matches, err := Search(cfg, "/nonexistent/ws", Options{Pattern: "anything"})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(matches) != 0 {
+		t.Errorf("got %d matches for missing repo, want 0", len(matches))
+	}
+}
+
+func TestSearchBuiltin_FixedString(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "test.txt"), []byte("func main() {\nvar x = 1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := Options{Pattern: "func main()", UseRegex: false}
+	matches, err := searchBuiltin("repo", dir, opts)
+	if err != nil {
+		t.Fatalf("searchBuiltin() error = %v", err)
+	}
+	if len(matches) != 1 {
+		t.Errorf("got %d matches, want 1", len(matches))
+	}
+}
+
+func TestSearchBuiltin_FixedStringDoesNotInterpretRegex(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "test.txt"), []byte("price is $10.00\nprice is 10000\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := Options{Pattern: "$10.00", UseRegex: false}
+	matches, err := searchBuiltin("repo", dir, opts)
+	if err != nil {
+		t.Fatalf("searchBuiltin() error = %v", err)
+	}
+	if len(matches) != 1 {
+		t.Errorf("got %d matches, want 1 (should not match regex-special chars literally)", len(matches))
+	}
+}
+
 func TestContains(t *testing.T) {
 	if !contains([]string{"a", "b", "c"}, "b") {
 		t.Error("contains(a,b,c, b) = false, want true")

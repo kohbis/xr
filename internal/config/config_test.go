@@ -188,6 +188,18 @@ func TestRepository_IsSymlink(t *testing.T) {
 	}
 }
 
+func TestSave_NonWritablePath(t *testing.T) {
+	cfg := &Config{
+		Workspace:    "./ws",
+		Repositories: []Repository{{Name: "a", Source: "x", Type: RepoTypeGit}},
+	}
+
+	err := Save("/nonexistent/dir/repos.yaml", cfg)
+	if err == nil {
+		t.Fatal("Save() expected error for non-writable path, got nil")
+	}
+}
+
 func TestRepository_IsClone(t *testing.T) {
 	r := &Repository{Type: RepoTypeClone}
 	if !r.IsClone() {

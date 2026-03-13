@@ -178,6 +178,135 @@ func TestCompareFile_SingleRepoNoComparison(t *testing.T) {
 	}
 }
 
+func TestCompareFile_NestedFiles(t *testing.T) {
+	dir := t.TempDir()
+	reposDir := filepath.Join(dir, "repos")
+
+	for _, name := range []string{"repo-a", "repo-b"} {
+		subDir := filepath.Join(reposDir, name, "src", "config")
+		if err := os.MkdirAll(subDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		content := []byte("setting = " + name + "\n")
+		if err := os.WriteFile(filepath.Join(subDir, "app.conf"), content, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "repo-a", Path: "repo-a", Type: config.RepoTypeClone},
+			{Name: "repo-b", Path: "repo-b", Type: config.RepoTypeClone},
+		},
+	}
+
+	comparisons, err := CompareFile(cfg, reposDir, "app.conf")
+	if err != nil {
+		t.Fatalf("CompareFile() error = %v", err)
+	}
+
+	if len(comparisons) != 1 {
+		t.Fatalf("got %d comparisons, want 1", len(comparisons))
+	}
+	if len(comparisons[0].Repos) != 2 {
+		t.Errorf("got %d repo files, want 2", len(comparisons[0].Repos))
+	}
+}
+
+func TestCompareFile_FileNotFound(t *testing.T) {
+	dir := t.TempDir()
+	reposDir := filepath.Join(dir, "repos")
+	repoDir := filepath.Join(reposDir, "proj")
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "other.txt"), []byte("x\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "proj", Path: "proj", Type: config.RepoTypeClone},
+		},
+	}
+
+	comparisons, err := CompareFile(cfg, reposDir, "nonexistent.txt")
+	if err != nil {
+		t.Fatalf("CompareFile() error = %v", err)
+	}
+	if len(comparisons) != 0 {
+		t.Errorf("got %d comparisons, want 0", len(comparisons))
+	}
+}
+
+func TestSearchPattern_RegexMatch(t *testing.T) {
+	dir := t.TempDir()
+	reposDir := filepath.Join(dir, "repos")
+	repoDir := filepath.Join(reposDir, "proj")
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	content := "func main() {\nvar x = 10\nfunc helper() {\n"
+	if err := os.WriteFile(filepath.Join(repoDir, "code.go"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "proj", Path: "proj", Type: config.RepoTypeClone},
+		},
+	}
+
+	result, err := SearchPattern(cfg, reposDir, `func\s+\w+`)
+	if err != nil {
+		t.Fatalf("SearchPattern() error = %v", err)
+	}
+
+	occs := result["proj"]
+	if len(occs) != 2 {
+		t.Errorf("got %d regex occurrences, want 2", len(occs))
+	}
+}
+
+func TestSearchPattern_LineNumbers(t *testing.T) {
+	dir := t.TempDir()
+	reposDir := filepath.Join(dir, "repos")
+	repoDir := filepath.Join(reposDir, "proj")
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	content := "first\nsecond\ntarget\nfourth\n"
+	if err := os.WriteFile(filepath.Join(repoDir, "lines.txt"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "proj", Path: "proj", Type: config.RepoTypeClone},
+		},
+	}
+
+	result, err := SearchPattern(cfg, reposDir, "target")
+	if err != nil {
+		t.Fatalf("SearchPattern() error = %v", err)
+	}
+
+	occs := result["proj"]
+	if len(occs) != 1 {
+		t.Fatalf("got %d occurrences, want 1", len(occs))
+	}
+	if occs[0].Line != 3 {
+		t.Errorf("Line = %d, want 3", occs[0].Line)
+	}
+	if occs[0].Content != "target" {
+		t.Errorf("Content = %q, want %q", occs[0].Content, "target")
+	}
+}
+
 func TestDiffFiles_IdenticalContent(t *testing.T) {
 	f1 := RepoFile{Repo: "a", Path: "file.txt", Content: "same content\n"}
 	f2 := RepoFile{Repo: "b", Path: "file.txt", Content: "same content\n"}
