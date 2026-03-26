@@ -312,6 +312,120 @@ func (w *Workspace) updateClone(repo config.Repository, destPath string, pull bo
 	return nil
 }
 
+// Remove removes the given repositories from the workspace filesystem.
+// The removal method depends on the repository type.
+func (w *Workspace) Remove(repos []config.Repository) error {
+	wsDir := filepath.Join(w.Root, w.Config.Workspace)
+
+	for _, repo := range repos {
+		destPath := filepath.Join(wsDir, repo.Path)
+		if err := validateInsideDir(wsDir, destPath); err != nil {
+			return fmt.Errorf("unsafe path for %s: %w", repo.Name, err)
+		}
+		var err error
+		switch {
+		case repo.IsSymlink():
+			err = w.removeSymlink(repo, destPath)
+		case repo.IsClone():
+			err = w.removeClone(repo, destPath)
+		default:
+			err = w.removeSubmodule(repo, destPath)
+		}
+		if err != nil {
+			return fmt.Errorf("removing %s: %w", repo.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// validateInsideDir ensures destPath is contained within dir.
+func validateInsideDir(dir, destPath string) error {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	absDest, err := filepath.Abs(destPath)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(absDir, absDest)
+	if err != nil {
+		return err
+	}
+	if rel == "." || strings.HasPrefix(rel, "..") {
+		return fmt.Errorf("path %q escapes workspace directory", destPath)
+	}
+	return nil
+}
+
+func (w *Workspace) removeSymlink(repo config.Repository, destPath string) error {
+	info, err := os.Lstat(destPath)
+	if os.IsNotExist(err) {
+		fmt.Printf("  symlink %s already removed\n", repo.Name)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		return fmt.Errorf("%s exists but is not a symlink", destPath)
+	}
+	fmt.Printf("  removing symlink %s\n", repo.Name)
+	return os.Remove(destPath)
+}
+
+func (w *Workspace) removeClone(repo config.Repository, destPath string) error {
+	if _, err := os.Stat(destPath); os.IsNotExist(err) {
+		fmt.Printf("  clone %s already removed\n", repo.Name)
+		return nil
+	}
+	fmt.Printf("  removing clone %s\n", repo.Name)
+	return os.RemoveAll(destPath)
+}
+
+func (w *Workspace) removeSubmodule(repo config.Repository, destPath string) error {
+	relPath, err := filepath.Rel(w.Root, destPath)
+	if err != nil {
+		return fmt.Errorf("computing relative path: %w", err)
+	}
+
+	fmt.Printf("  removing submodule %s\n", repo.Name)
+
+	if _, err := os.Stat(destPath); os.IsNotExist(err) {
+		fmt.Printf("  submodule %s directory already removed, cleaning up references\n", repo.Name)
+	} else {
+		// git submodule deinit -f <path>
+		deinit := exec.Command("git", "submodule", "deinit", "-f", relPath)
+		deinit.Dir = w.Root
+		deinit.Stdout = os.Stdout
+		deinit.Stderr = os.Stderr
+		if err := deinit.Run(); err != nil {
+			fmt.Printf("  warning: git submodule deinit: %v (continuing)\n", err)
+		}
+	}
+
+	// git rm -f --ignore-unmatch <path>
+	rm := exec.Command("git", "rm", "-f", "--ignore-unmatch", relPath)
+	rm.Dir = w.Root
+	rm.Stdout = os.Stdout
+	rm.Stderr = os.Stderr
+	if err := rm.Run(); err != nil {
+		fmt.Printf("  warning: git rm: %v (continuing)\n", err)
+	}
+
+	// Clean up .git/modules/<path> if it remains
+	modulesPath := filepath.Join(w.Root, ".git", "modules", relPath)
+	if _, err := os.Stat(modulesPath); err == nil {
+		fmt.Printf("  cleaning up .git/modules/%s\n", relPath)
+		if err := os.RemoveAll(modulesPath); err != nil {
+			return fmt.Errorf("removing git modules dir: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // ScanRepos scans the workspace directory and detects repositories.
 func (w *Workspace) ScanRepos() ([]config.Repository, error) {
 	wsDir := filepath.Join(w.Root, w.Config.Workspace)

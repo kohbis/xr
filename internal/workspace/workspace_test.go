@@ -268,6 +268,171 @@ func TestDetectRepo_CloneWithGitDir(t *testing.T) {
 	}
 }
 
+func TestRemoveRejectsEscapingPath(t *testing.T) {
+	dir := t.TempDir()
+	wsDir := filepath.Join(dir, "repos")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{"parent traversal", "../../etc"},
+		{"dot only", "."},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := config.Repository{
+				Name: "bad-repo", Path: tt.path,
+				Type: config.RepoTypeClone, Source: "https://example.com/repo.git",
+			}
+			cfg := &config.Config{
+				Workspace:    "./repos",
+				Repositories: []config.Repository{repo},
+			}
+			ws := New(dir, cfg)
+
+			err := ws.Remove([]config.Repository{repo})
+			if err == nil {
+				t.Error("Remove() should reject escaping path")
+			}
+		})
+	}
+}
+
+func TestValidateInsideDir(t *testing.T) {
+	tests := []struct {
+		name    string
+		dir     string
+		dest    string
+		wantErr bool
+	}{
+		{"valid child", "/workspace/repos", "/workspace/repos/my-repo", false},
+		{"parent escape", "/workspace/repos", "/workspace/repos/../../etc", true},
+		{"same dir", "/workspace/repos", "/workspace/repos", true},
+		{"nested child", "/workspace/repos", "/workspace/repos/deep/nested", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateInsideDir(tt.dir, tt.dest)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateInsideDir(%q, %q) error = %v, wantErr %v", tt.dir, tt.dest, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestRemoveSymlink(t *testing.T) {
+	dir := t.TempDir()
+	wsDir := filepath.Join(dir, "repos")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	target := t.TempDir()
+	linkPath := filepath.Join(wsDir, "my-link")
+	if err := os.Symlink(target, linkPath); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := config.Repository{
+		Name: "my-link", Path: "my-link",
+		Type: config.RepoTypeSymlink, Source: target,
+	}
+	cfg := &config.Config{
+		Workspace:    "./repos",
+		Repositories: []config.Repository{repo},
+	}
+	ws := New(dir, cfg)
+
+	if err := ws.Remove([]config.Repository{repo}); err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+
+	if _, err := os.Lstat(linkPath); !os.IsNotExist(err) {
+		t.Error("symlink should have been removed")
+	}
+}
+
+func TestRemoveSymlink_AlreadyRemoved(t *testing.T) {
+	dir := t.TempDir()
+	wsDir := filepath.Join(dir, "repos")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := config.Repository{
+		Name: "gone-link", Path: "gone-link",
+		Type: config.RepoTypeSymlink, Source: "/nonexistent",
+	}
+	cfg := &config.Config{
+		Workspace:    "./repos",
+		Repositories: []config.Repository{repo},
+	}
+	ws := New(dir, cfg)
+
+	if err := ws.Remove([]config.Repository{repo}); err != nil {
+		t.Fatalf("Remove() should not error for missing symlink: %v", err)
+	}
+}
+
+func TestRemoveClone(t *testing.T) {
+	dir := t.TempDir()
+	wsDir := filepath.Join(dir, "repos")
+	cloneDir := filepath.Join(wsDir, "my-clone")
+	if err := os.MkdirAll(filepath.Join(cloneDir, ".git"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Add a file to verify the entire directory is removed
+	if err := os.WriteFile(filepath.Join(cloneDir, "file.txt"), []byte("hi"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := config.Repository{
+		Name: "my-clone", Path: "my-clone",
+		Type: config.RepoTypeClone, Source: "https://example.com/repo.git",
+	}
+	cfg := &config.Config{
+		Workspace:    "./repos",
+		Repositories: []config.Repository{repo},
+	}
+	ws := New(dir, cfg)
+
+	if err := ws.Remove([]config.Repository{repo}); err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+
+	if _, err := os.Stat(cloneDir); !os.IsNotExist(err) {
+		t.Error("clone directory should have been removed")
+	}
+}
+
+func TestRemoveClone_AlreadyRemoved(t *testing.T) {
+	dir := t.TempDir()
+	wsDir := filepath.Join(dir, "repos")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := config.Repository{
+		Name: "gone-clone", Path: "gone-clone",
+		Type: config.RepoTypeClone, Source: "https://example.com/repo.git",
+	}
+	cfg := &config.Config{
+		Workspace:    "./repos",
+		Repositories: []config.Repository{repo},
+	}
+	ws := New(dir, cfg)
+
+	if err := ws.Remove([]config.Repository{repo}); err != nil {
+		t.Fatalf("Remove() should not error for missing clone: %v", err)
+	}
+}
+
 func TestDetectRepo_SubmoduleWithGitFile(t *testing.T) {
 	dir := t.TempDir()
 	repoDir := filepath.Join(dir, "sub-repo")
