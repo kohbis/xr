@@ -268,6 +268,58 @@ func TestDetectRepo_CloneWithGitDir(t *testing.T) {
 	}
 }
 
+func TestAdd_Symlink(t *testing.T) {
+	dir := t.TempDir()
+	target := t.TempDir()
+
+	repo := config.Repository{
+		Name: "my-link", Path: "my-link",
+		Type: config.RepoTypeSymlink, Source: target,
+	}
+	cfg := &config.Config{
+		Workspace:    "./repos",
+		Repositories: []config.Repository{repo},
+	}
+	ws := New(dir, cfg)
+
+	if err := ws.Add(repo); err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	linkPath := filepath.Join(dir, "repos", "my-link")
+	info, err := os.Lstat(linkPath)
+	if err != nil {
+		t.Fatalf("Lstat() error = %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Error("expected symlink, got regular file/dir")
+	}
+}
+
+func TestAdd_CreatesWorkspaceDir(t *testing.T) {
+	dir := t.TempDir()
+	target := t.TempDir()
+
+	repo := config.Repository{
+		Name: "my-link", Path: "my-link",
+		Type: config.RepoTypeSymlink, Source: target,
+	}
+	cfg := &config.Config{
+		Workspace:    "./my-workspace",
+		Repositories: []config.Repository{repo},
+	}
+	ws := New(dir, cfg)
+
+	if err := ws.Add(repo); err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	wsDir := filepath.Join(dir, "my-workspace")
+	if _, err := os.Stat(wsDir); os.IsNotExist(err) {
+		t.Error("Add() should create workspace directory if it doesn't exist")
+	}
+}
+
 func TestRemoveRejectsEscapingPath(t *testing.T) {
 	dir := t.TempDir()
 	wsDir := filepath.Join(dir, "repos")

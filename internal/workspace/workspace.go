@@ -127,6 +127,15 @@ func (w *Workspace) addRepo(repo config.Repository, wsDir string) error {
 	return w.addSubmodule(repo, destPath)
 }
 
+// Add adds a single repository to the workspace.
+func (w *Workspace) Add(repo config.Repository) error {
+	wsDir := filepath.Join(w.Root, w.Config.Workspace)
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		return fmt.Errorf("creating workspace directory: %w", err)
+	}
+	return w.addRepo(repo, wsDir)
+}
+
 func expandTilde(path string) string {
 	if strings.HasPrefix(path, "~/") {
 		home, err := os.UserHomeDir()

@@ -248,3 +248,61 @@ func TestSaveAndLoadRoundtrip(t *testing.T) {
 		}
 	}
 }
+
+func TestReload_InfersTypes(t *testing.T) {
+	cfg := &Config{
+		Workspace: "./repos",
+		Repositories: []Repository{
+			{Name: "remote", Source: "git@github.com:user/repo.git", Path: "remote"},
+			{Name: "local", Source: "/home/user/lib", Path: "local"},
+			{Name: "explicit-clone", Source: "git@github.com:user/repo.git", Path: "cloned", Type: RepoTypeClone},
+		},
+	}
+
+	reloaded, err := Reload(cfg)
+	if err != nil {
+		t.Fatalf("Reload() error = %v", err)
+	}
+
+	if reloaded.Repositories[0].Type != RepoTypeGit {
+		t.Errorf("repo[0].Type = %q, want %q", reloaded.Repositories[0].Type, RepoTypeGit)
+	}
+	if reloaded.Repositories[1].Type != RepoTypeSymlink {
+		t.Errorf("repo[1].Type = %q, want %q", reloaded.Repositories[1].Type, RepoTypeSymlink)
+	}
+	if reloaded.Repositories[2].Type != RepoTypeClone {
+		t.Errorf("repo[2].Type = %q, want %q", reloaded.Repositories[2].Type, RepoTypeClone)
+	}
+}
+
+func TestReload_DefaultsPathToName(t *testing.T) {
+	cfg := &Config{
+		Workspace: "./repos",
+		Repositories: []Repository{
+			{Name: "my-repo", Source: "git@github.com:user/repo.git"},
+		},
+	}
+
+	reloaded, err := Reload(cfg)
+	if err != nil {
+		t.Fatalf("Reload() error = %v", err)
+	}
+
+	if reloaded.Repositories[0].Path != "my-repo" {
+		t.Errorf("Path = %q, want %q", reloaded.Repositories[0].Path, "my-repo")
+	}
+}
+
+func TestReload_RejectsUnknownType(t *testing.T) {
+	cfg := &Config{
+		Workspace: "./repos",
+		Repositories: []Repository{
+			{Name: "bad", Source: "x", Type: "unknown"},
+		},
+	}
+
+	_, err := Reload(cfg)
+	if err == nil {
+		t.Fatal("Reload() expected error for unknown type, got nil")
+	}
+}
