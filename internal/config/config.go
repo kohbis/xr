@@ -39,6 +39,40 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
 
+	return normalize(&cfg)
+}
+
+func (r *Repository) IsSymlink() bool {
+	return r.Type == RepoTypeSymlink
+}
+
+func (r *Repository) IsClone() bool {
+	return r.Type == RepoTypeClone
+}
+
+func Save(path string, cfg *Config) error {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+// Reload marshals and re-parses a config to apply type inference and validation.
+func Reload(cfg *Config) (*Config, error) {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling config: %w", err)
+	}
+	var reloaded Config
+	if err := yaml.Unmarshal(data, &reloaded); err != nil {
+		return nil, fmt.Errorf("parsing config: %w", err)
+	}
+	return normalize(&reloaded)
+}
+
+// normalize applies defaults, type inference, and validation to a config.
+func normalize(cfg *Config) (*Config, error) {
 	if cfg.Workspace == "" {
 		cfg.Workspace = "./repos"
 	}
@@ -62,21 +96,5 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
-	return &cfg, nil
-}
-
-func (r *Repository) IsSymlink() bool {
-	return r.Type == RepoTypeSymlink
-}
-
-func (r *Repository) IsClone() bool {
-	return r.Type == RepoTypeClone
-}
-
-func Save(path string, cfg *Config) error {
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("marshaling config: %w", err)
-	}
-	return os.WriteFile(path, data, 0644)
+	return cfg, nil
 }
