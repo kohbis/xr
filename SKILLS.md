@@ -1,13 +1,10 @@
 ---
 name: xr
 description: >
-  Skills reference for the xr CLI — a tool that lets AI agents manage and operate
-  across multiple Git repositories as a single workspace. Read this file to understand
-  what xr can do and how to invoke it. Use xr commands whenever the user mentions
-  "xr" or "xr CLI" as a noun, or when a task involves searching across repositories,
-  comparing files or patterns across repos, adding, removing, or listing workspace
-  repositories, inspecting or visualizing the structure of repos in a workspace,
-  managing .gitignore for the workspace, or syncing and updating repositories.
+  Multi-repo workspace CLI. Use this skill whenever the user mentions "xr", or when
+  a task involves cross-repository search, diff, comparison, tree visualization,
+  adding/removing/listing/syncing workspace repositories, or managing .gitignore
+  for a multi-repo workspace. Also use when repos.yaml is referenced.
 ---
 
 # xr — Agent Skills Reference
@@ -47,7 +44,10 @@ Sets up a workspace from `repos.yaml`: creates the directory, runs `git init`, a
 xr repo list                            # show all repos with type, branch, path, source
 xr repo add <name> -s <source>          # add a repo (type inferred from source)
 xr repo add <name> -s <url> -b main -t clone  # add as clone on specific branch
+xr repo add <name> -s <source> -p sub/dir     # specify relative path in workspace
 xr repo remove <name>                   # remove from config and workspace
+xr repo remove <name> --force           # skip confirmation prompt
+xr repo remove <name> --config-only     # remove from config only, keep files
 xr repo update                          # sync all repos (submodule update)
 xr repo update <name> [<name>...]       # sync specific repos
 xr repo update --pull                   # sync + pull latest from remote

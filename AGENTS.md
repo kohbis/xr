@@ -46,6 +46,13 @@ xr/
 └── repos.yaml.example       # Example workspace configuration
 ```
 
+## Environment Setup
+
+Prerequisites for development:
+- **Go 1.25+** — required to build and test
+- **golangci-lint** — required for `make lint` and CI
+- **git** — required for submodule operations and tests
+
 ## Development Workflow
 
 ### Building
@@ -160,6 +167,12 @@ The release workflow publishes:
 - Homebrew formula to `kohbis/homebrew-xr`
 
 Changelog excludes commits with types `docs`, `test`, and `chore`.
+
+## Scope & Boundaries
+
+- Do not edit generated or vendored files: `dist/`, `go.sum`.
+- Do not edit `.goreleaser.yaml` or `.github/workflows/release.yml` unless specifically asked — these affect the public release pipeline.
+- `repos.yaml` is user-specific workspace config and should not be committed. Use `repos.yaml.example` for documentation purposes.
 
 ## External Runtime Dependencies
 
