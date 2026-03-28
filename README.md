@@ -175,3 +175,7 @@ xr tree --deps         # highlight dependency files
 | Flag | Description |
 |------|-------------|
 | `--config` | Path to config file (default: `repos.yaml` in current directory) |
+
+## For AI Agents
+
+`xr` is designed for use by AI agents managing multi-repository workspaces. [`SKILLS.md`](./SKILLS.md) documents all commands, flags, CI checks, and cross-repo workflow patterns from an agent's perspective. Placing it where your agent framework reads context makes `xr` immediately usable by the agent.
