@@ -2,6 +2,7 @@ package diff
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -136,8 +137,25 @@ func SearchPattern(cfg *config.Config, wsDir, pattern string) (map[string][]Patt
 	return result, nil
 }
 
-func SearchHistory(cfg *config.Config, wsDir, query string) error {
+func repoMatchesFilter(filter []string, name string) bool {
+	if len(filter) == 0 {
+		return true
+	}
+	for _, f := range filter {
+		if f == name {
+			return true
+		}
+	}
+	return false
+}
+
+// SearchHistory runs git log --grep in each repository (optionally limited by repoFilter).
+func SearchHistory(cfg *config.Config, wsDir, query string, repoFilter []string) error {
 	for _, repo := range cfg.Repositories {
+		if !repoMatchesFilter(repoFilter, repo.Name) {
+			continue
+		}
+
 		repoPath := filepath.Join(wsDir, repo.Path)
 		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
 			continue
@@ -158,6 +176,41 @@ func SearchHistory(cfg *config.Config, wsDir, query string) error {
 		} else {
 			fmt.Print(string(out))
 		}
+	}
+
+	return nil
+}
+
+// GitDiff runs git diff in each repository workspace directory, forwarding args to git diff.
+// Use an empty repoFilter to include all configured repos that exist on disk.
+func GitDiff(cfg *config.Config, wsDir string, repoFilter []string, gitArgs []string) error {
+	gitCmd := append([]string{"-c", "core.pager=cat", "diff"}, gitArgs...)
+
+	for _, repo := range cfg.Repositories {
+		if !repoMatchesFilter(repoFilter, repo.Name) {
+			continue
+		}
+
+		repoPath := filepath.Join(wsDir, repo.Path)
+		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+			continue
+		}
+
+		output.PrintRepoHeader(repo.Name)
+
+		cmd := exec.Command("git", gitCmd...)
+		cmd.Dir = repoPath
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+				fmt.Print(string(out))
+				continue
+			}
+			output.PrintWarning(fmt.Sprintf("git diff in %s: %v\n%s", repo.Name, err, string(out)))
+			continue
+		}
+		fmt.Print(string(out))
 	}
 
 	return nil

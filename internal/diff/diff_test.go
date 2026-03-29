@@ -1,8 +1,11 @@
 package diff
 
 import (
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kohbis/xr/internal/config"
@@ -332,5 +335,105 @@ func TestDiffFiles_DifferentContent(t *testing.T) {
 
 	if result == "" {
 		t.Error("DiffFiles() for different files should not be empty")
+	}
+}
+
+func TestRepoMatchesFilter(t *testing.T) {
+	if !repoMatchesFilter(nil, "any") {
+		t.Error("empty filter should match any repo")
+	}
+	if !repoMatchesFilter([]string{"a", "b"}, "b") {
+		t.Error("expected b to match filter")
+	}
+	if repoMatchesFilter([]string{"a"}, "c") {
+		t.Error("c should not match filter")
+	}
+}
+
+func TestGitDiff_RespectsRepoFilter(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not in PATH")
+	}
+
+	reposDir := filepath.Join(t.TempDir(), "repos")
+
+	makeGitRepo := func(name, commitFile, worktreeExtra string) {
+		t.Helper()
+		rd := filepath.Join(reposDir, name)
+		if err := os.MkdirAll(rd, 0755); err != nil {
+			t.Fatal(err)
+		}
+		gitInitOrSkip(t, rd)
+		runGit(t, rd, "config", "user.email", "xr@test")
+		runGit(t, rd, "config", "user.name", "xr")
+		if err := os.WriteFile(filepath.Join(rd, commitFile), []byte("baseline\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		runGit(t, rd, "add", commitFile)
+		runGit(t, rd, "commit", "-m", "init", "--no-gpg-sign")
+		if err := os.WriteFile(filepath.Join(rd, commitFile), []byte("baseline\n"+worktreeExtra), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	makeGitRepo("alpha", "f.txt", "delta-alpha\n")
+	makeGitRepo("beta", "f.txt", "delta-beta\n")
+
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "alpha", Path: "alpha", Type: config.RepoTypeClone},
+			{Name: "beta", Path: "beta", Type: config.RepoTypeClone},
+		},
+	}
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = w
+
+	gitErr := GitDiff(cfg, reposDir, []string{"alpha"}, nil)
+
+	_ = w.Close()
+	os.Stdout = old
+	out, readErr := io.ReadAll(r)
+	_ = r.Close()
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if gitErr != nil {
+		t.Fatalf("GitDiff() error = %v", gitErr)
+	}
+
+	s := string(out)
+	if s == "" {
+		t.Fatal("expected diff output for alpha")
+	}
+	if !strings.Contains(s, "=== alpha ===") {
+		t.Errorf("expected alpha repo header, got:\n%s", s)
+	}
+	if strings.Contains(s, "=== beta ===") {
+		t.Errorf("beta should be excluded by --repo filter, got:\n%s", s)
+	}
+}
+
+func gitInitOrSkip(t *testing.T, dir string) {
+	t.Helper()
+	cmd := exec.Command("git", "init")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Skipf("git init unavailable: %v\n%s", err, out)
+	}
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v in %s: %v\n%s", args, dir, err, out)
 	}
 }
