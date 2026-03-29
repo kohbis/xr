@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/kohbis/xr/internal/config"
+	"github.com/kohbis/xr/internal/shellcomp"
 	"github.com/kohbis/xr/internal/workspace"
 	"github.com/spf13/cobra"
 )
@@ -27,7 +28,8 @@ The removal method depends on the repository type:
   - git:     deinitializes and removes the git submodule
 
 Use --config-only to remove only from repos.yaml without touching the filesystem.`,
-	Args: cobra.MinimumNArgs(1),
+	Args:              cobra.MinimumNArgs(1),
+	ValidArgsFunction: shellcomp.CompleteRepoNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfgPath := cmd.Root().PersistentFlags().Lookup("config").Value.String()
 		if cfgPath == "" {

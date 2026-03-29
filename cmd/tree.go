@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/kohbis/xr/internal/output"
+	"github.com/kohbis/xr/internal/shellcomp"
 	"github.com/kohbis/xr/internal/structure"
 	"github.com/spf13/cobra"
 )
@@ -16,10 +17,11 @@ var (
 )
 
 var treeCmd = &cobra.Command{
-	Use:   "tree [repo]",
-	Short: "Show repository structure",
-	Long:  `Display the directory structure of repositories in the workspace.`,
-	Args:  cobra.MaximumNArgs(1),
+	Use:               "tree [repo]",
+	Short:             "Show repository structure",
+	Long:              `Display the directory structure of repositories in the workspace.`,
+	Args:              cobra.MaximumNArgs(1),
+	ValidArgsFunction: shellcomp.CompleteRepoNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := loadConfig()
 		if err != nil {
