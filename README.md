@@ -30,7 +30,7 @@ source <(xr completion bash)
 source <(xr completion zsh)
 ```
 
-Subcommands and flags are completed automatically. Repository names are completed for `xr tree`, `xr search --repo`, `xr repo update`, and `xr repo remove`, using the same config as `xr --config` (default: `./repos.yaml`).
+Subcommands and flags are completed automatically. Repository names are completed for `xr tree`, `xr search --repo`, `xr diff --repo`, `xr repo update`, and `xr repo remove`, using the same config as `xr --config` (default: `./repos.yaml`).
 
 ## Prerequisites
 
@@ -38,7 +38,7 @@ Subcommands and flags are completed automatically. Repository names are complete
 
 | Command | Required | Used by | Purpose |
 |---------|----------|---------|---------|
-| `git` | **Yes** | `xr init`, `xr repo update`, `xr repo import`, `xr diff --history` | Repository initialization, submodule management, commit history search |
+| `git` | **Yes** | `xr init`, `xr repo update`, `xr repo import`, `xr diff --history`, `xr diff --git` | Repository initialization, submodule management, `git log` / `git diff` in each repo |
 | `diff` | Yes (pre-installed) | `xr diff --file` | Unified diff output between files across repositories |
 | `rg` (ripgrep) | No | `xr search` | Fast search engine; falls back to a built-in implementation if not found |
 
@@ -165,12 +165,16 @@ xr search -r project-a "main"  # limit to specific repo
 
 ### `xr diff`
 
-Compare patterns or files across repositories.
+Compare patterns or files across repositories. Modes (`--pattern`, `--file`, `--history`, `--git`) are mutually exclusive.
 
 ```sh
-xr diff --pattern "version"    # show where a pattern appears across repos
-xr diff --file go.mod          # compare a specific file across repos
-xr diff --history "fix:"       # search git commit history
+xr diff --pattern "version"              # regex: matches per line across repos
+xr diff --file go.mod                    # unified diff via the system `diff` command
+xr diff --history "fix:"                 # git log --grep in each repo
+xr diff --history "fix:" -r project-a    # same, limited to one repo
+xr diff --git                            # git diff in each repo (pager disabled)
+xr diff --git -r project-a               # git diff only in listed repos
+xr diff --git -- --stat                  # pass flags/args to git diff (use -- before them)
 ```
 
 ### `xr tree [repo]`
