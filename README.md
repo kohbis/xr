@@ -18,6 +18,20 @@ brew install kohbis/xr/xr
 go install github.com/kohbis/xr@latest
 ```
 
+### Shell completion
+
+Cobra provides `xr completion` for **bash**, **zsh**, **fish**, and **powershell**. Typical setups:
+
+```sh
+# bash (install bash-completion if completions do not load)
+source <(xr completion bash)
+
+# zsh
+source <(xr completion zsh)
+```
+
+Subcommands and flags are completed automatically. Repository names are completed for `xr tree`, `xr search --repo`, `xr repo update`, and `xr repo remove`, using the same config as `xr --config` (default: `./repos.yaml`).
+
 ## Prerequisites
 
 `xr` shells out to the following external commands at runtime:

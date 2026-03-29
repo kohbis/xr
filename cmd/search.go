@@ -5,6 +5,7 @@ import (
 
 	"github.com/kohbis/xr/internal/output"
 	"github.com/kohbis/xr/internal/search"
+	"github.com/kohbis/xr/internal/shellcomp"
 	"github.com/spf13/cobra"
 )
 
@@ -83,4 +84,5 @@ func init() {
 	searchCmd.Flags().IntVarP(&searchContext, "context", "C", 0, "lines of context around matches")
 	searchCmd.Flags().BoolVarP(&searchRegex, "regex", "e", false, "treat pattern as regular expression")
 	searchCmd.Flags().StringArrayVarP(&searchRepo, "repo", "r", nil, "limit search to specific repos")
+	cobra.CheckErr(searchCmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))
 }

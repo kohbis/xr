@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/kohbis/xr/internal/shellcomp"
 	"github.com/kohbis/xr/internal/workspace"
 	"github.com/spf13/cobra"
 )
@@ -11,10 +12,11 @@ import (
 var updatePull bool
 
 var updateCmd = &cobra.Command{
-	Use:   "update [repo...]",
-	Short: "Update workspace repositories",
+	Use:               "update [repo...]",
+	Short:             "Update workspace repositories",
 	Long: `Update repositories in the workspace. Without arguments, updates all repos.
 Specify repo names to update only those repos.`,
+	ValidArgsFunction: shellcomp.CompleteRepoNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := loadConfig(cmd)
 		if err != nil {
