@@ -511,3 +511,208 @@ func TestDetectRepo_SubmoduleWithGitFile(t *testing.T) {
 		t.Errorf("Type = %q, want %q (submodule has .git file, not dir)", repo.Type, config.RepoTypeGit)
 	}
 }
+
+func TestHasSubmodules(t *testing.T) {
+	tests := []struct {
+		name       string
+		setup      func(dir string) error
+		wantResult bool
+	}{
+		{
+			name: "with .gitmodules",
+			setup: func(dir string) error {
+				return os.WriteFile(filepath.Join(dir, ".gitmodules"), []byte("[submodule \"foo\"]\n\tpath = foo\n\turl = https://example.com/foo\n"), 0644)
+			},
+			wantResult: true,
+		},
+		{
+			name: "empty .gitmodules",
+			setup: func(dir string) error {
+				return os.WriteFile(filepath.Join(dir, ".gitmodules"), []byte(""), 0644)
+			},
+			wantResult: false,
+		},
+		{
+			name: "no .gitmodules",
+			setup: func(dir string) error {
+				return nil
+			},
+			wantResult: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := tt.setup(dir); err != nil {
+				t.Fatal(err)
+			}
+			got := hasSubmodules(dir)
+			if got != tt.wantResult {
+				t.Errorf("hasSubmodules() = %v, want %v", got, tt.wantResult)
+			}
+		})
+	}
+}
+
+func TestSyncOptions(t *testing.T) {
+	opts := SyncOptions{
+		Pull:   true,
+		Fetch:  true,
+		Prune:  true,
+		Submod: true,
+	}
+	if !opts.Pull || !opts.Fetch || !opts.Prune || !opts.Submod {
+		t.Error("SyncOptions fields should be set correctly")
+	}
+}
+
+func TestSync_SkipsReposNotInFilter(t *testing.T) {
+	dir := t.TempDir()
+	wsDir := filepath.Join(dir, "repos")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "repo-a", Path: "repo-a", Type: config.RepoTypeClone, Source: "https://example.com/a.git"},
+			{Name: "repo-b", Path: "repo-b", Type: config.RepoTypeClone, Source: "https://example.com/b.git"},
+		},
+	}
+	ws := New(dir, cfg)
+
+	// This should not error even though repos don't exist
+	// because we're filtering to only sync "repo-a" and it's ok to print warnings
+	result, err := ws.Sync([]string{"repo-a"}, SyncOptions{})
+	if err != nil {
+		t.Errorf("Sync() error = %v", err)
+	}
+	if result.Skipped != 1 {
+		t.Errorf("Skipped = %d, want 1", result.Skipped)
+	}
+}
+
+func TestSyncSymlink_Missing(t *testing.T) {
+	dir := t.TempDir()
+	wsDir := filepath.Join(dir, "repos")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "my-link", Path: "my-link", Type: config.RepoTypeSymlink, Source: "/nonexistent"},
+		},
+	}
+	ws := New(dir, cfg)
+
+	// Should not error, just print a message
+	result, err := ws.Sync(nil, SyncOptions{})
+	if err != nil {
+		t.Errorf("Sync() error = %v", err)
+	}
+	if result.Skipped != 1 {
+		t.Errorf("Skipped = %d, want 1", result.Skipped)
+	}
+}
+
+func TestSyncSymlink_Exists(t *testing.T) {
+	dir := t.TempDir()
+	wsDir := filepath.Join(dir, "repos")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	target := t.TempDir()
+	linkPath := filepath.Join(wsDir, "my-link")
+	if err := os.Symlink(target, linkPath); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "my-link", Path: "my-link", Type: config.RepoTypeSymlink, Source: target},
+		},
+	}
+	ws := New(dir, cfg)
+
+	result, err := ws.Sync(nil, SyncOptions{})
+	if err != nil {
+		t.Errorf("Sync() error = %v", err)
+	}
+	if result.Skipped != 1 {
+		t.Errorf("Skipped = %d, want 1", result.Skipped)
+	}
+}
+
+func TestSyncSymlink_WithGitRepo(t *testing.T) {
+	dir := t.TempDir()
+	wsDir := filepath.Join(dir, "repos")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a target directory that looks like a git repo
+	target := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(target, ".git"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	linkPath := filepath.Join(wsDir, "my-link")
+	if err := os.Symlink(target, linkPath); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "my-link", Path: "my-link", Type: config.RepoTypeSymlink, Source: target, Branch: "main"},
+		},
+	}
+	ws := New(dir, cfg)
+
+	// syncSymlink will try git operations which will fail since it's not a real git repo,
+	// but Sync should not return an error (it prints warnings)
+	result, err := ws.Sync(nil, SyncOptions{})
+	if err != nil {
+		t.Errorf("Sync() error = %v", err)
+	}
+	if result.Failed != 1 {
+		t.Errorf("Failed = %d, want 1", result.Failed)
+	}
+}
+
+func TestSyncSymlink_NoBranchNonGitDir(t *testing.T) {
+	dir := t.TempDir()
+	wsDir := filepath.Join(dir, "repos")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	target := t.TempDir()
+	linkPath := filepath.Join(wsDir, "my-link")
+	if err := os.Symlink(target, linkPath); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "my-link", Path: "my-link", Type: config.RepoTypeSymlink, Source: target},
+		},
+	}
+	ws := New(dir, cfg)
+
+	// No branch configured and target is not a git repo — should just say "ok"
+	result, err := ws.Sync(nil, SyncOptions{})
+	if err != nil {
+		t.Errorf("Sync() error = %v", err)
+	}
+	if result.Skipped != 1 {
+		t.Errorf("Skipped = %d, want 1", result.Skipped)
+	}
+}
