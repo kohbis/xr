@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/kohbis/xr/internal/config"
+	"github.com/kohbis/xr/internal/output"
 )
 
 type Workspace struct {
@@ -530,4 +531,217 @@ func gitCurrentBranch(dir string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// SyncOptions configures behavior of Sync.
+type SyncOptions struct {
+	Pull   bool // pull latest changes after switching branch
+	Fetch  bool // fetch from remote before switching branch
+	Prune  bool // prune deleted remote branches during fetch
+	Submod bool // update submodules recursively
+}
+
+// SyncResult holds the outcome of a Sync operation.
+type SyncResult struct {
+	Synced  int
+	Skipped int
+	Failed  int
+}
+
+// Sync synchronizes repositories to match repos.yaml configuration.
+// For each repository, it switches to the configured branch and optionally
+// fetches/pulls latest changes.
+func (w *Workspace) Sync(repoNames []string, opts SyncOptions) (*SyncResult, error) {
+	wsDir := filepath.Join(w.Root, w.Config.Workspace)
+	result := &SyncResult{}
+
+	for _, repo := range w.Config.Repositories {
+		if len(repoNames) > 0 && !slices.Contains(repoNames, repo.Name) {
+			continue
+		}
+
+		destPath := filepath.Join(wsDir, repo.Path)
+		var err error
+		var skipped bool
+		switch {
+		case repo.IsSymlink():
+			skipped, err = w.syncSymlink(repo, destPath, opts)
+		case repo.IsClone():
+			skipped, err = w.syncClone(repo, destPath, opts)
+		default:
+			skipped, err = w.syncSubmodule(repo, destPath, opts)
+		}
+		if err != nil {
+			output.PrintSyncFail(fmt.Sprintf("%v", err))
+			result.Failed++
+		} else if skipped {
+			result.Skipped++
+		} else {
+			result.Synced++
+		}
+	}
+
+	return result, nil
+}
+
+func (w *Workspace) syncSymlink(repo config.Repository, destPath string, opts SyncOptions) (bool, error) {
+	output.PrintSyncHeader(repo.Name, "symlink")
+
+	info, err := os.Lstat(destPath)
+	if err != nil {
+		output.PrintSyncSkip("missing (run 'xr init' to recreate)")
+		return true, nil
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		return false, fmt.Errorf("%s exists but is not a symlink", destPath)
+	}
+
+	// Resolve symlink target to operate on the actual directory
+	realPath, err := filepath.EvalSymlinks(destPath)
+	if err != nil {
+		return false, fmt.Errorf("resolving symlink: %w", err)
+	}
+
+	// Check if the target is a git repository
+	if _, err := os.Stat(filepath.Join(realPath, ".git")); os.IsNotExist(err) {
+		output.PrintSyncSkip("not a git repository")
+		return true, nil
+	}
+
+	// No branch configured — nothing to sync
+	if repo.Branch == "" && !opts.Fetch && !opts.Pull {
+		output.PrintSyncSkip("no branch configured")
+		return true, nil
+	}
+
+	if err := w.syncGitRepo(repo, realPath, opts); err != nil {
+		return false, err
+	}
+
+	return false, nil
+}
+
+func (w *Workspace) syncClone(repo config.Repository, destPath string, opts SyncOptions) (bool, error) {
+	output.PrintSyncHeader(repo.Name, "clone")
+
+	if _, err := os.Stat(destPath); os.IsNotExist(err) {
+		output.PrintSyncSkip("missing (run 'xr init' to clone)")
+		return true, nil
+	}
+
+	if err := w.syncGitRepo(repo, destPath, opts); err != nil {
+		return false, err
+	}
+
+	// Update submodules within the clone
+	if opts.Submod {
+		if hasSubmodules(destPath) {
+			output.PrintSyncAction("updating submodules")
+			if err := runGitQuiet(destPath, "submodule", "update", "--init", "--recursive"); err != nil {
+				return false, fmt.Errorf("submodule update: %w", err)
+			}
+			output.PrintSyncOK("submodules updated")
+		}
+	}
+
+	return false, nil
+}
+
+func (w *Workspace) syncSubmodule(repo config.Repository, destPath string, opts SyncOptions) (bool, error) {
+	output.PrintSyncHeader(repo.Name, "submodule")
+
+	if _, err := os.Stat(destPath); os.IsNotExist(err) {
+		output.PrintSyncSkip("missing (run 'xr init' to add)")
+		return true, nil
+	}
+
+	// Initialize and update the submodule first
+	relPath, err := filepath.Rel(w.Root, destPath)
+	if err != nil {
+		return false, fmt.Errorf("computing relative path: %w", err)
+	}
+
+	output.PrintSyncAction("initializing submodule")
+	cmd := exec.Command("git", "submodule", "update", "--init", "--recursive", "--", relPath)
+	cmd.Dir = w.Root
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return false, fmt.Errorf("submodule update: %s", strings.TrimSpace(string(out)))
+	}
+
+	if err := w.syncGitRepo(repo, destPath, opts); err != nil {
+		return false, err
+	}
+
+	return false, nil
+}
+
+// syncGitRepo performs fetch, checkout, and pull on a git repository directory.
+func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOptions) error {
+	// Fetch from remote
+	if opts.Fetch {
+		args := []string{"fetch", "origin"}
+		if opts.Prune {
+			args = append(args, "--prune")
+		}
+		output.PrintSyncAction("fetching from origin")
+		if err := runGitQuiet(dir, args...); err != nil {
+			return fmt.Errorf("fetch: %w", err)
+		}
+	}
+
+	// Switch to configured branch if specified
+	if repo.Branch != "" {
+		currentBranch := gitCurrentBranch(dir)
+		if currentBranch == repo.Branch {
+			output.PrintSyncOK(fmt.Sprintf("already on %s", repo.Branch))
+		} else {
+			output.PrintSyncAction(fmt.Sprintf("switching %s → %s", currentBranch, repo.Branch))
+			if err := runGitQuiet(dir, "checkout", repo.Branch); err != nil {
+				return fmt.Errorf("checkout %s: %w", repo.Branch, err)
+			}
+			output.PrintSyncOK(fmt.Sprintf("switched to %s", repo.Branch))
+		}
+	}
+
+	// Pull latest changes
+	if opts.Pull {
+		branch := repo.Branch
+		if branch == "" {
+			branch = gitCurrentBranch(dir)
+		}
+		if branch == "" {
+			output.PrintSyncFail("could not determine branch for pull")
+		} else {
+			output.PrintSyncAction(fmt.Sprintf("pulling origin/%s", branch))
+			if err := runGitQuiet(dir, "pull", "origin", branch); err != nil {
+				return fmt.Errorf("pull origin/%s: %w", branch, err)
+			}
+			output.PrintSyncOK("up to date")
+		}
+	}
+
+	return nil
+}
+
+// runGitQuiet runs a git command, suppressing stdout/stderr. On error, returns
+// the combined output trimmed as the error message.
+func runGitQuiet(dir string, args ...string) error {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg != "" {
+			return fmt.Errorf("%s", msg)
+		}
+		return err
+	}
+	return nil
+}
+
+// hasSubmodules checks if a git repository has submodules.
+func hasSubmodules(dir string) bool {
+	gitmodulesPath := filepath.Join(dir, ".gitmodules")
+	info, err := os.Stat(gitmodulesPath)
+	return err == nil && info.Size() > 0
 }

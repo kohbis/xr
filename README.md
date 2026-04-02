@@ -30,7 +30,7 @@ source <(xr completion bash)
 source <(xr completion zsh)
 ```
 
-Subcommands and flags are completed automatically. Repository names are completed for `xr tree`, `xr search --repo`, `xr diff --repo`, `xr repo update`, and `xr repo remove`, using the same config as `xr --config` (default: `./repos.yaml`).
+Subcommands and flags are completed automatically. Repository names are completed for `xr tree`, `xr search --repo`, `xr diff --repo`, `xr repo update`, `xr repo sync`, and `xr repo remove`, using the same config as `xr --config` (default: `./repos.yaml`).
 
 ## Prerequisites
 
@@ -130,6 +130,27 @@ xr repo update
 xr repo update project-a
 xr repo update --pull     # also pull latest changes from remote
 ```
+
+#### `xr repo sync [repo...]`
+
+Synchronize repositories to match the configuration in `repos.yaml`. Switches branches to match the configured branch, and optionally fetches/pulls latest changes.
+
+```sh
+xr repo sync                          # switch to configured branches
+xr repo sync --fetch --pull           # fetch, switch branch, and pull
+xr repo sync project-a --pull         # sync specific repo with pull
+xr repo sync --fetch --prune --pull   # fetch with prune, switch, and pull
+xr repo sync --submodules             # also update submodules recursively
+```
+
+| Flag | Description |
+|------|-------------|
+| `--fetch` | Fetch from remote before switching branch |
+| `--pull` | Pull latest changes after switching branch |
+| `--prune` | Prune deleted remote branches during fetch (requires `--fetch`) |
+| `--submodules` | Update submodules recursively after sync |
+
+For symlink repos, branch switching / fetch / pull is performed only when the target is a git repository and `branch` is configured in `repos.yaml`. Symlinks without a configured branch are skipped.
 
 #### `xr repo import`
 

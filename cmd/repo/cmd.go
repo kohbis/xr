@@ -13,4 +13,5 @@ func init() {
 	Cmd.AddCommand(importCmd)
 	Cmd.AddCommand(removeCmd)
 	Cmd.AddCommand(addCmd)
+	Cmd.AddCommand(syncCmd)
 }

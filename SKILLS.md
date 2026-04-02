@@ -51,6 +51,11 @@ xr repo remove <name> --config-only     # remove from config only, keep files
 xr repo update                          # sync all repos (submodule update)
 xr repo update <name> [<name>...]       # sync specific repos
 xr repo update --pull                   # sync + pull latest from remote
+xr repo sync                            # switch to configured branches in repos.yaml
+xr repo sync <name> [<name>...]         # sync specific repos only
+xr repo sync --fetch --pull             # fetch, switch branch, and pull latest
+xr repo sync --fetch --prune --pull     # fetch with prune, switch, and pull
+xr repo sync --submodules               # also update submodules recursively
 xr repo import                          # discover repos in workspace dir and add to repos.yaml
 xr repo import --dry-run                # preview discovered repos without writing
 ```
@@ -59,6 +64,9 @@ xr repo import --dry-run                # preview discovered repos without writi
 - Enumerate the workspace before operating: `xr repo list`
 - Add a newly created repo to the workspace: `xr repo add`
 - Keep submodules in sync after upstream changes: `xr repo update --pull`
+- Ensure all repos are on their configured branches: `xr repo sync`
+- Bring all repos up to date with remote: `xr repo sync --fetch --pull`
+- Switch symlink repos to their configured branch: `xr repo sync` (requires `branch` in config)
 - Bootstrap a config from an existing workspace on disk: `xr repo import --dry-run`
 
 ---
