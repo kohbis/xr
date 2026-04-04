@@ -1,4 +1,4 @@
-.PHONY: build test lint release-dry-run tag release
+.PHONY: build test lint lint-fix release-dry-run tag release
 
 build:
 	go build -o xr .
@@ -8,6 +8,9 @@ test:
 
 lint:
 	golangci-lint run
+
+lint-fix:
+	golangci-lint run --fix
 
 release-dry-run:
 	goreleaser release --snapshot --clean

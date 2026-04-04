@@ -74,10 +74,11 @@ All logic packages in `internal/` have corresponding `_test.go` files. Tests are
 ### Linting
 
 ```sh
-make lint         # runs golangci-lint
+make lint         # runs golangci-lint (check only)
+make lint-fix     # same, but apply auto-fixes (linters + formatters such as gofmt)
 ```
 
-Enabled linters: `errcheck`, `govet`, `ineffassign`, `staticcheck`, `unused`.
+Enabled linters: `errcheck`, `govet`, `ineffassign`, `staticcheck`, `unused`. Enabled formatters: `gofmt`.
 
 All errors must be checked — do not silently discard errors.
 
