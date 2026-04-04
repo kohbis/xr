@@ -12,8 +12,8 @@ import (
 var updatePull bool
 
 var updateCmd = &cobra.Command{
-	Use:               "update [repo...]",
-	Short:             "Update workspace repositories",
+	Use:   "update [repo...]",
+	Short: "Update workspace repositories",
 	Long: `Update repositories in the workspace. Without arguments, updates all repos.
 Specify repo names to update only those repos.`,
 	ValidArgsFunction: shellcomp.CompleteRepoNames,
