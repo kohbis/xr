@@ -24,6 +24,15 @@ func Execute() {
 	}
 }
 
+// SetVersion sets rootCmd.Version for Cobra's --version / -v (see spf13/cobra Command.Version).
+// Empty v defaults to "dev" (e.g. when main.version is unset at link time).
+func SetVersion(v string) {
+	if v == "" {
+		v = "dev"
+	}
+	rootCmd.Version = v
+}
+
 func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: repos.yaml in current directory)")
 	rootCmd.AddCommand(repo.Cmd)
