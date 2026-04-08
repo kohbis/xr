@@ -4,8 +4,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    assignees: "kohbis"
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    assignees: "kohbis"
