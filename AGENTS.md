@@ -178,6 +178,6 @@ Changelog excludes commits with types `docs`, `test`, and `chore`.
 ## External Runtime Dependencies
 
 `xr` shells out to external tools at runtime:
-- `git` — required for `xr init`, `xr repo update`, `xr repo import`, `xr diff --history`, `xr diff --git`
+- `git` — required for `xr init`, `xr repo update`, `xr repo import`, `xr diff`, `xr diff --history`
 - `diff` — required for `xr diff --file` (pre-installed on most systems)
 - `rg` (ripgrep) — optional for `xr search`; falls back to built-in implementation if absent

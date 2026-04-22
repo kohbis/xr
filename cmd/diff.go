@@ -14,19 +14,20 @@ var (
 	diffPattern string
 	diffFile    string
 	diffHistory string
-	diffGit     bool
 	diffRepo    []string
 )
 
 var diffCmd = &cobra.Command{
 	Use:   "diff",
-	Short: "Compare patterns or files across repositories",
-	Long: `Compare patterns or files across repositories.
-Use --pattern to see where a pattern appears across repos,
+	Short: "Run git diff across repositories (or optional pattern/file/history modes)",
+	Long: `By default runs git diff in each repository (pager disabled). Optional arguments
+after -- are passed to git (e.g. "xr diff -- --stat").
+
+Other modes (mutually exclusive): --pattern to see where a regex appears across repos,
 --file to compare a specific file across repos (unified diff via the diff command),
---history to search git commit history,
-or --git to run git diff in each repository (optional arguments are passed to git diff; use -- before flags, e.g. "xr diff --git -- --stat").
-Limit repos with --repo / -r when using --git or --history.`,
+--history to search git commit history.
+
+Limit repos with --repo / -r for the default git diff and for --history.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := loadConfig()
 		if err != nil {
@@ -42,9 +43,6 @@ Limit repos with --repo / -r when using --git or --history.`,
 		if diffHistory != "" {
 			modeCount++
 		}
-		if diffGit {
-			modeCount++
-		}
 		if diffFile != "" {
 			modeCount++
 		}
@@ -52,20 +50,15 @@ Limit repos with --repo / -r when using --git or --history.`,
 			modeCount++
 		}
 		if modeCount > 1 {
-			return fmt.Errorf("use only one of --pattern, --file, --history, or --git")
-		}
-		if modeCount == 0 {
-			return fmt.Errorf("specify --pattern, --file, --history, or --git")
+			return fmt.Errorf("use only one of --pattern, --file, or --history")
 		}
 		if len(diffRepo) > 0 && (diffPattern != "" || diffFile != "") {
-			return fmt.Errorf("--repo applies only with --git or --history")
+			return fmt.Errorf("--repo applies only with the default git diff or --history")
 		}
 
 		switch {
 		case diffHistory != "":
 			return diff.SearchHistory(cfg, wsDir, diffHistory, diffRepo)
-		case diffGit:
-			return diff.GitDiff(cfg, wsDir, diffRepo, args)
 		case diffFile != "":
 			comparisons, err := diff.CompareFile(cfg, wsDir, diffFile)
 			if err != nil {
@@ -93,7 +86,7 @@ Limit repos with --repo / -r when using --git or --history.`,
 				fmt.Printf("File '%s' not found in multiple repositories.\n", diffFile)
 			}
 			return nil
-		default:
+		case diffPattern != "":
 			occurrences, err := diff.SearchPattern(cfg, wsDir, diffPattern)
 			if err != nil {
 				return fmt.Errorf("searching pattern: %w", err)
@@ -110,6 +103,8 @@ Limit repos with --repo / -r when using --git or --history.`,
 				}
 			}
 			return nil
+		default:
+			return diff.GitDiff(cfg, wsDir, diffRepo, args)
 		}
 	},
 }
@@ -119,7 +114,6 @@ func init() {
 	diffCmd.Flags().StringVar(&diffPattern, "pattern", "", "show where a pattern appears across repos")
 	diffCmd.Flags().StringVar(&diffFile, "file", "", "compare a specific file across repos")
 	diffCmd.Flags().StringVar(&diffHistory, "history", "", "search git commit history")
-	diffCmd.Flags().BoolVar(&diffGit, "git", false, "run git diff in each repo (optional args passed through)")
-	diffCmd.Flags().StringArrayVarP(&diffRepo, "repo", "r", nil, "limit to repo names (with --git or --history)")
+	diffCmd.Flags().StringArrayVarP(&diffRepo, "repo", "r", nil, "limit to repo names (default git diff or --history)")
 	cobra.CheckErr(diffCmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))
 }
