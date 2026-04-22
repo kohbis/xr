@@ -1,4 +1,4 @@
-package cmd
+package repo
 
 import (
 	"bufio"
@@ -11,12 +11,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var gitignoreCmd = &cobra.Command{
+// GitignoreCmd adds the workspace directory to .gitignore in the current workspace.
+var GitignoreCmd = &cobra.Command{
 	Use:   "gitignore",
 	Short: "Update .gitignore",
 	Long:  `Add workspace directory entries to .gitignore in the current workspace.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig()
+		cfg, err := loadConfig(cmd)
 		if err != nil {
 			return err
 		}
@@ -38,8 +39,4 @@ var gitignoreCmd = &cobra.Command{
 
 		return nil
 	},
-}
-
-func init() {
-	rootCmd.AddCommand(gitignoreCmd)
 }

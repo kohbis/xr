@@ -93,17 +93,17 @@ xr init -f path/to/repos.yaml my-workspace
 
 If `repos.yaml` is not found, you will be prompted to either create one interactively or initialize without repos (creates a `README.md` only).
 
-### `xr gitignore`
+### `xr repo`
+
+Manage repositories in the workspace.
+
+#### `xr repo gitignore`
 
 Interactively add the workspace directory to `.gitignore`.
 
 ```sh
-xr gitignore
+xr repo gitignore
 ```
-
-### `xr repo`
-
-Manage repositories in the workspace.
 
 #### `xr repo list`
 
