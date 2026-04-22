@@ -25,9 +25,9 @@ xr/
 │       ├── cmd.go           # Parent repo command
 │       ├── list.go          # xr repo list
 │       ├── add.go           # xr repo add
-│       ├── update.go        # xr repo update
 │       ├── remove.go        # xr repo remove
 │       ├── import.go        # xr repo import
+│       ├── sync.go          # xr repo sync
 │       └── helpers.go       # Shared repo helpers
 ├── internal/                # Internal packages (not exported)
 │   ├── config/              # repos.yaml loading/saving and data types
@@ -178,6 +178,6 @@ Changelog excludes commits with types `docs`, `test`, and `chore`.
 ## External Runtime Dependencies
 
 `xr` shells out to external tools at runtime:
-- `git` — required for `xr init`, `xr repo update`, `xr repo import`, `xr diff`, `xr diff --history`
+- `git` — required for `xr init`, `xr repo sync`, `xr repo import`, `xr diff`, `xr diff --history`
 - `diff` — required for `xr diff --file` (pre-installed on most systems)
 - `rg` (ripgrep) — optional for `xr search`; falls back to built-in implementation if absent

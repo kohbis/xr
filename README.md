@@ -30,7 +30,7 @@ source <(xr completion bash)
 source <(xr completion zsh)
 ```
 
-Subcommands and flags are completed automatically. Repository names are completed for `xr tree`, `xr search --repo`, `xr diff --repo`, `xr repo update`, `xr repo sync`, and `xr repo remove`, using the same config as `xr --config` (default: `./repos.yaml`).
+Subcommands and flags are completed automatically. Repository names are completed for `xr tree`, `xr search --repo`, `xr diff --repo`, `xr repo sync`, and `xr repo remove`, using the same config as `xr --config` (default: `./repos.yaml`).
 
 ## Prerequisites
 
@@ -38,7 +38,7 @@ Subcommands and flags are completed automatically. Repository names are complete
 
 | Command | Required | Used by | Purpose |
 |---------|----------|---------|---------|
-| `git` | **Yes** | `xr init`, `xr repo update`, `xr repo import`, `xr diff`, `xr diff --history` | Repository initialization, submodule management, `git log` / `git diff` in each repo |
+| `git` | **Yes** | `xr init`, `xr repo sync`, `xr repo import`, `xr diff`, `xr diff --history` | Repository initialization, branch switching, submodule management, `git log` / `git diff` in each repo |
 | `diff` | Yes (pre-installed) | `xr diff --file` | Unified diff output between files across repositories |
 | `rg` (ripgrep) | No | `xr search` | Fast search engine; falls back to a built-in implementation if not found |
 
@@ -121,21 +121,12 @@ project-a    git       main    project-a    git@github.com:user/project-a.git
 local-lib    symlink           local-lib    /Users/kohbis/workspace/local-lib
 ```
 
-#### `xr repo update [repo...]`
-
-Update repositories in the workspace. Without arguments, updates all repos.
-
-```sh
-xr repo update
-xr repo update project-a
-xr repo update --pull     # also pull latest changes from remote
-```
-
 #### `xr repo sync [repo...]`
 
 Synchronize repositories to match the configuration in `repos.yaml`. Switches branches to match the configured branch, and optionally fetches/pulls latest changes.
 
 ```sh
+xr sync                               # shortcut for: xr repo sync
 xr repo sync                          # switch to configured branches
 xr repo sync --fetch --pull           # fetch, switch branch, and pull
 xr repo sync project-a --pull         # sync specific repo with pull
