@@ -48,9 +48,6 @@ xr repo add <name> -s <source> -p sub/dir     # specify relative path in workspa
 xr repo remove <name>                   # remove from config and workspace
 xr repo remove <name> --force           # skip confirmation prompt
 xr repo remove <name> --config-only     # remove from config only, keep files
-xr repo update                          # sync all repos (submodule update)
-xr repo update <name> [<name>...]       # sync specific repos
-xr repo update --pull                   # sync + pull latest from remote
 xr repo sync                            # switch to configured branches in repos.yaml
 xr repo sync <name> [<name>...]         # sync specific repos only
 xr repo sync --fetch --pull             # fetch, switch branch, and pull latest
@@ -63,7 +60,7 @@ xr repo import --dry-run                # preview discovered repos without writi
 **Agent use cases:**
 - Enumerate the workspace before operating: `xr repo list`
 - Add a newly created repo to the workspace: `xr repo add`
-- Keep submodules in sync after upstream changes: `xr repo update --pull`
+- Keep submodules in sync after upstream changes: `xr repo sync --submodules`
 - Ensure all repos are on their configured branches: `xr repo sync`
 - Bring all repos up to date with remote: `xr repo sync --fetch --pull`
 - Switch symlink repos to their configured branch: `xr repo sync` (requires `branch` in config)

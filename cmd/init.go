@@ -106,7 +106,7 @@ and creates symlinks for local repos.`,
 		}
 
 		fmt.Printf("\nWorkspace initialized successfully.\n")
-		fmt.Printf("Run 'xr update' to sync submodules.\n")
+		fmt.Printf("Run 'xr sync --submodules' to sync submodules.\n")
 		return nil
 	},
 }
