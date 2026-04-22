@@ -93,6 +93,7 @@ xr search -r a -r b "pattern"      # limit to multiple repos
 ### Cross-repository comparison (`xr diff`)
 
 ```sh
+xr diff                        # git diff in each repo (pager disabled)
 xr diff --pattern "version"        # show where pattern occurs per-repo (no diff output)
 xr diff --file go.mod              # unified diff of a file across all repos
 xr diff --history "fix:"           # search git commit messages across repos
