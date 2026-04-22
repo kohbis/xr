@@ -13,4 +13,5 @@ func init() {
 	Cmd.AddCommand(removeCmd)
 	Cmd.AddCommand(addCmd)
 	Cmd.AddCommand(syncCmd)
+	Cmd.AddCommand(GitignoreCmd)
 }

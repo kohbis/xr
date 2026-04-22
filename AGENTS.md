@@ -19,7 +19,6 @@ xr/
 │   ├── init.go              # xr init
 │   ├── tree.go              # xr tree
 │   ├── diff.go              # xr diff
-│   ├── gitignore.go         # xr gitignore
 │   ├── helpers.go           # Shared CLI helpers
 │   └── repo/                # xr repo subcommands
 │       ├── cmd.go           # Parent repo command
@@ -28,6 +27,7 @@ xr/
 │       ├── remove.go        # xr repo remove
 │       ├── import.go        # xr repo import
 │       ├── sync.go          # xr repo sync
+│       ├── gitignore.go     # xr repo gitignore
 │       └── helpers.go       # Shared repo helpers
 ├── internal/                # Internal packages (not exported)
 │   ├── config/              # repos.yaml loading/saving and data types

@@ -120,10 +120,10 @@ xr tree --deps                     # highlight dependency files
 
 ---
 
-### .gitignore management (`xr gitignore`)
+### .gitignore management (`xr repo gitignore`)
 
 ```sh
-xr gitignore
+xr repo gitignore
 ```
 
 Interactively adds the workspace directory to `.gitignore`. Useful after `xr init` to prevent committing the workspace directory from the parent repo.
