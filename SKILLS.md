@@ -106,16 +106,14 @@ xr diff --history "fix:"           # search git commit messages across repos
 ### Workspace structure (`xr tree`)
 
 ```sh
-xr tree                            # all repos, depth 3
+xr tree                            # all repos, depth 1
 xr tree project-a                  # single repo
 xr tree --depth 2                  # shallower view
 xr tree --depth 0                  # unlimited depth
-xr tree --deps                     # highlight dependency files
 ```
 
 **Agent use cases:**
 - Understand the layout of an unfamiliar repo before navigating it
-- Identify dependency manifests (`go.mod`, `package.json`, `Cargo.toml`, etc.) with `--deps`
 - Scope analysis before a cross-repo refactor
 
 ---

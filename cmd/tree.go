@@ -12,8 +12,7 @@ import (
 )
 
 var (
-	treeDepth    int
-	treeDepsOnly bool
+	treeDepth int
 )
 
 var treeCmd = &cobra.Command{
@@ -51,7 +50,7 @@ var treeCmd = &cobra.Command{
 			}
 
 			fmt.Println()
-			structure.PrintTree(info, treeDepsOnly)
+			structure.PrintTree(info)
 		}
 
 		return nil
@@ -60,6 +59,5 @@ var treeCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(treeCmd)
-	treeCmd.Flags().IntVar(&treeDepth, "depth", 3, "maximum depth to display (0 = unlimited)")
-	treeCmd.Flags().BoolVar(&treeDepsOnly, "deps", false, "highlight dependency files")
+	treeCmd.Flags().IntVar(&treeDepth, "depth", 1, "maximum depth to display (0 = unlimited)")
 }
