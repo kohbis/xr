@@ -21,7 +21,8 @@ var initCmd = &cobra.Command{
 	Long: `Initialize a new xr workspace. Creates the directory structure,
 initializes a git repository, adds submodules for remote repos,
 and creates symlinks for local repos.`,
-	Args: cobra.MaximumNArgs(1),
+	GroupID: "workspace",
+	Args:    cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dir := "."
 		if len(args) > 0 {

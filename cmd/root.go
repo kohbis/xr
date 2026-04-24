@@ -35,5 +35,19 @@ func SetVersion(v string) {
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: repos.yaml in current directory)")
+
+	rootCmd.AddGroup(
+		&cobra.Group{ID: "workspace", Title: "Workspace"},
+		&cobra.Group{ID: "repo", Title: "Repository management"},
+		&cobra.Group{ID: "cross", Title: "Cross-repository"},
+		&cobra.Group{ID: "meta", Title: "Other"},
+	)
+
 	rootCmd.AddCommand(repo.Cmd)
+
+	// Ensure the default completion command is present so it can be grouped.
+	rootCmd.InitDefaultCompletionCmd()
+	if completionCmd, _, err := rootCmd.Find([]string{"completion"}); err == nil {
+		completionCmd.GroupID = "meta"
+	}
 }
