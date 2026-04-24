@@ -1,11 +1,8 @@
 package repo
 
 import (
-	"bufio"
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/shellcomp"
@@ -19,7 +16,7 @@ var (
 )
 
 var removeCmd = &cobra.Command{
-	Use:   "remove <repo...>",
+	Use:   "remove [repo...]",
 	Short: "Remove repositories from the workspace",
 	Long: `Remove repositories from the workspace and repos.yaml.
 The removal method depends on the repository type:
@@ -28,9 +25,14 @@ The removal method depends on the repository type:
   - git:     deinitializes and removes the git submodule
 
 Use --config-only to remove only from repos.yaml without touching the filesystem.`,
-	Args:              cobra.MinimumNArgs(1),
+	Args:              cobra.MinimumNArgs(0),
 	ValidArgsFunction: shellcomp.CompleteRepoNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		isTTY, err := isInteractiveTTY()
+		if err != nil {
+			return err
+		}
+
 		cfgPath := cmd.Root().PersistentFlags().Lookup("config").Value.String()
 		if cfgPath == "" {
 			cfgPath = "repos.yaml"
@@ -44,6 +46,21 @@ Use --config-only to remove only from repos.yaml without touching the filesystem
 		reposByName := make(map[string]config.Repository, len(cfg.Repositories))
 		for _, r := range cfg.Repositories {
 			reposByName[r.Name] = r
+		}
+
+		if len(args) == 0 {
+			if !isTTY {
+				return fmt.Errorf("missing required value(s): repo name(s) (non-interactive)")
+			}
+			selected, err := promptRemoveTargetsInteractive(reposByName)
+			if err != nil {
+				return err
+			}
+			if len(selected) == 0 {
+				fmt.Println("Aborted.")
+				return nil
+			}
+			args = selected
 		}
 
 		var targets []config.Repository
@@ -61,11 +78,14 @@ Use --config-only to remove only from repos.yaml without touching the filesystem
 		}
 
 		if !removeForce {
-			fmt.Print("\nProceed? [y/N]: ")
-			reader := bufio.NewReader(os.Stdin)
-			answer, _ := reader.ReadString('\n')
-			answer = strings.TrimSpace(strings.ToLower(answer))
-			if answer != "y" {
+			if !isTTY {
+				return fmt.Errorf("non-interactive remove requires --force")
+			}
+			ok, err := promptConfirmRemove()
+			if err != nil {
+				return err
+			}
+			if !ok {
 				fmt.Println("Aborted.")
 				return nil
 			}
@@ -103,6 +123,22 @@ Use --config-only to remove only from repos.yaml without touching the filesystem
 		fmt.Printf("Removed %d repo(s) from %s.\n", len(targets), cfgPath)
 		return nil
 	},
+}
+
+func promptRemoveTargetsInteractive(reposByName map[string]config.Repository) ([]string, error) {
+	if len(reposByName) == 0 {
+		return nil, fmt.Errorf("no repositories found in config")
+	}
+
+	names := make([]string, 0, len(reposByName))
+	for name := range reposByName {
+		names = append(names, name)
+	}
+	return promptMultiSelectByDone("Select a repo to remove (search enabled)", names, 15)
+}
+
+func promptConfirmRemove() (bool, error) {
+	return promptConfirm("Proceed", true)
 }
 
 func init() {

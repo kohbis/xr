@@ -20,7 +20,7 @@ var (
 )
 
 var addCmd = &cobra.Command{
-	Use:   "add <name>",
+	Use:   "add [name]",
 	Short: "Add a repository to the workspace",
 	Long: `Add a new repository to repos.yaml and set it up in the workspace.
 The repository type is inferred from the source unless --type is specified:
@@ -28,14 +28,58 @@ The repository type is inferred from the source unless --type is specified:
   - Remote URL                      → git (submodule)
   - Explicit --type clone           → clone
 
-If a repository with the same name or path already exists, you will be
-prompted to update it or abort.`,
-	Args: cobra.ExactArgs(1),
+If a repository with the same name or path already exists, an error is returned.`,
+	Args: cobra.RangeArgs(0, 1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		name := args[0]
+		in, err := os.Stdin.Stat()
+		if err != nil {
+			return err
+		}
+		isTTY := (in.Mode() & os.ModeCharDevice) != 0
 
-		if addSource == "" {
-			return fmt.Errorf("--source is required")
+		reader := bufio.NewReader(os.Stdin)
+		name := ""
+		if len(args) > 0 {
+			name = args[0]
+		}
+
+		// Collect required values first; decide repo name last.
+		resolvedSource, err := resolveSource(addSource, isTTY, reader)
+		if err != nil {
+			return err
+		}
+		addSource = resolvedSource
+
+		// If name is omitted, infer it from the source (URL or local path).
+		// Fallback to prompting only when inference fails and we have a TTY.
+		if strings.TrimSpace(name) == "" {
+			name = inferNameFromSource(addSource)
+			if strings.TrimSpace(name) == "" {
+				if !isTTY {
+					return fmt.Errorf("missing required value(s): name (argument; could not infer from --source)")
+				}
+				name = promptRequired(reader, "Repository name", "")
+			}
+		}
+
+		// In non-interactive environments (no TTY), do not prompt (avoid hanging in CI).
+		// Keep defaults without prompting.
+		if !isTTY {
+			if strings.TrimSpace(addPath) == "" {
+				addPath = name
+			}
+		}
+
+		if strings.TrimSpace(addPath) == "" {
+			addPath = promptOptional(reader, "Path within workspace", name)
+		}
+		if strings.TrimSpace(addType) == "" {
+			if isTTY {
+				addType = promptRepoTypeInteractive(reader)
+			}
+		}
+		if strings.TrimSpace(addBranch) == "" && isTTY {
+			addBranch = promptOptional(reader, "Branch (optional)", "")
 		}
 
 		cfgPath := cmd.Root().PersistentFlags().Lookup("config").Value.String()
@@ -49,9 +93,6 @@ prompted to update it or abort.`,
 		}
 
 		repoPath := addPath
-		if repoPath == "" {
-			repoPath = name
-		}
 
 		repo := config.Repository{
 			Name:   name,
@@ -61,47 +102,26 @@ prompted to update it or abort.`,
 		}
 
 		if addType != "" {
-			repo.Type = config.RepoType(addType)
+			switch strings.ToLower(strings.TrimSpace(addType)) {
+			case "git", "symlink", "clone":
+				repo.Type = config.RepoType(strings.ToLower(strings.TrimSpace(addType)))
+			default:
+				return fmt.Errorf("--type must be one of: git, symlink, clone (or omit for auto)")
+			}
 		}
 
 		// Check for duplicates by name or path
-		for i, existing := range cfg.Repositories {
+		for _, existing := range cfg.Repositories {
 			nameMatch := existing.Name == repo.Name
 			pathMatch := existing.Path == repo.Path
 			if !nameMatch && !pathMatch {
 				continue
 			}
 
-			var reason string
-			if nameMatch && pathMatch {
-				reason = fmt.Sprintf("name %q and path %q", repo.Name, repo.Path)
-			} else if nameMatch {
-				reason = fmt.Sprintf("name %q", repo.Name)
-			} else {
-				reason = fmt.Sprintf("path %q", repo.Path)
+			if nameMatch {
+				return fmt.Errorf("repository name %q already exists in %s", repo.Name, cfgPath)
 			}
-
-			fmt.Printf("A repository with the same %s already exists:\n", reason)
-			fmt.Printf("  existing: %-20s %-8s %s\n", existing.Name, string(existing.Type), existing.Source)
-			fmt.Printf("  new:      %-20s          %s\n", repo.Name, repo.Source)
-			fmt.Print("\nUpdate the existing entry? [y/N]: ")
-
-			reader := bufio.NewReader(os.Stdin)
-			answer, _ := reader.ReadString('\n')
-			answer = strings.TrimSpace(strings.ToLower(answer))
-			if answer != "y" {
-				fmt.Println("Aborted.")
-				return nil
-			}
-
-			cfg.Repositories[i] = repo
-			// Re-run type inference via Save → Load round-trip is not needed;
-			// config.Load infers type, so we just save and let the next load handle it.
-			if err := config.Save(cfgPath, cfg); err != nil {
-				return fmt.Errorf("saving config: %w", err)
-			}
-			fmt.Printf("Updated %q in %s.\n", name, cfgPath)
-			return setupRepo(cfg, repo)
+			return fmt.Errorf("repository path %q already exists in %s", repo.Path, cfgPath)
 		}
 
 		cfg.Repositories = append(cfg.Repositories, repo)
@@ -112,6 +132,25 @@ prompted to update it or abort.`,
 
 		return setupRepo(cfg, repo)
 	},
+}
+
+func promptRepoTypeInteractive(reader *bufio.Reader) string {
+	i, err := promptSelect(reader, "Type", []string{"auto", "git (submodule)", "symlink", "clone"}, 10, false)
+	if err != nil {
+		return ""
+	}
+	switch i {
+	case 0:
+		return ""
+	case 1:
+		return "git"
+	case 2:
+		return "symlink"
+	case 3:
+		return "clone"
+	default:
+		return ""
+	}
 }
 
 func setupRepo(cfg *config.Config, repo config.Repository) error {
