@@ -76,6 +76,28 @@ func promptConfirm(label string, defaultNo bool) (bool, error) {
 	return false, err
 }
 
+// promptYesNoSelect is a non-aborting confirmation prompt implemented as a select.
+// This avoids promptui's confirm-mode abort behavior (which can look like an error)
+// when the user answers "no".
+func promptYesNoSelect(label string, defaultNo bool) (bool, error) {
+	items := []string{"No", "Yes"}
+	start := 0
+	if !defaultNo {
+		start = 1
+	}
+	sel := promptui.Select{
+		Label:     label,
+		Items:     items,
+		Size:      2,
+		CursorPos: start,
+	}
+	i, _, err := sel.Run()
+	if err != nil {
+		return false, err
+	}
+	return i == 1, nil
+}
+
 // promptMultiSelectByDone is a dependency-free "multi-select" UX:
 // users repeatedly pick one item from the list until they choose [Done].
 func promptMultiSelectByDone(label string, items []string, size int) ([]string, error) {
