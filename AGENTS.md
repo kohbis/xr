@@ -2,7 +2,7 @@
 
 This file provides guidance for AI assistants **contributing to the `xr` codebase** (adding features, fixing bugs, reviewing code). It covers architecture, conventions, and CI requirements for development work.
 
-For using the `xr` CLI as an agent tool across a multi-repository workspace, see @SKILLS.md instead.
+For using the `xr` CLI as an agent tool across a multi-repository workspace, see @SKILL.md instead.
 
 ## Project Overview
 
