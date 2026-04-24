@@ -126,7 +126,6 @@ local-lib    symlink           local-lib    /Users/kohbis/workspace/local-lib
 Synchronize repositories to match the configuration in `repos.yaml`. Switches branches to match the configured branch, and optionally fetches/pulls latest changes.
 
 ```sh
-xr sync                               # shortcut for: xr repo sync
 xr repo sync                          # switch to configured branches
 xr repo sync --fetch --pull           # fetch, switch branch, and pull
 xr repo sync project-a --pull         # sync specific repo with pull
