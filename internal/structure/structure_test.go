@@ -4,9 +4,21 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
+
+func initGitRepo(t *testing.T, dir string) {
+	t.Helper()
+	cmd := exec.Command("git", "init")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		// Some sandboxes disallow writes outside the workspace directory, which can
+		// make git init fail even though the code works in real repos.
+		t.Skipf("git init unavailable in this environment: %v (%s)", err, string(out))
+	}
+}
 
 func TestAnalyzeRepo_BasicStructure(t *testing.T) {
 	dir := t.TempDir()
@@ -91,6 +103,41 @@ func TestAnalyzeRepo_SkipsHiddenDirs(t *testing.T) {
 	}
 }
 
+func TestAnalyzeRepo_SkipsIgnoredByGitignore(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("ignored.txt\nignored-dir/\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ignored.txt"), []byte("x\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "ignored-dir"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ignored-dir", "ignored.js"), []byte("x\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "visible.txt"), []byte("data\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := AnalyzeRepo("repo", dir, 0)
+	if err != nil {
+		t.Fatalf("AnalyzeRepo() error = %v", err)
+	}
+
+	if info.FileCount != 1 {
+		t.Errorf("FileCount = %d, want 1 (gitignored contents should be skipped)", info.FileCount)
+	}
+	for _, child := range info.Children {
+		if child.Name == "ignored.txt" || child.Name == "ignored-dir" {
+			t.Errorf("gitignored entry %q should be skipped from the tree", child.Name)
+		}
+	}
+}
+
 func TestAnalyzeRepo_MaxDepth(t *testing.T) {
 	dir := t.TempDir()
 	deep := filepath.Join(dir, "a", "b", "c")
@@ -149,7 +196,7 @@ func TestAnalyzeRepo_DepFileMarkedIsDep(t *testing.T) {
 	}
 }
 
-func capturePrintTree(t *testing.T, info *RepoInfo, depsOnly bool) string {
+func capturePrintTree(t *testing.T, info *RepoInfo) string {
 	t.Helper()
 	old := os.Stdout
 	r, w, err := os.Pipe()
@@ -158,7 +205,7 @@ func capturePrintTree(t *testing.T, info *RepoInfo, depsOnly bool) string {
 	}
 	os.Stdout = w
 
-	PrintTree(info, depsOnly)
+	PrintTree(info)
 
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
@@ -177,6 +224,8 @@ func TestPrintTree_Output(t *testing.T) {
 		Name:      "test-repo",
 		Language:  "Go",
 		FileCount: 3,
+		Branch:    "main",
+		Commit:    "abc123",
 		Children: []*Node{
 			{Name: "src", IsDir: true, Children: []*Node{
 				{Name: "main.go", IsDir: false},
@@ -186,31 +235,11 @@ func TestPrintTree_Output(t *testing.T) {
 		},
 	}
 
-	output := capturePrintTree(t, info, false)
+	output := capturePrintTree(t, info)
 
-	expected := "test-repo [Go] (3 files)"
+	expected := "test-repo [Go] (main abc123)"
 	if !bytes.Contains([]byte(output), []byte(expected)) {
 		t.Errorf("PrintTree output missing header. got:\n%s", output)
-	}
-}
-
-func TestPrintTree_DepsOnly(t *testing.T) {
-	info := &RepoInfo{
-		Name:      "repo",
-		FileCount: 2,
-		Children: []*Node{
-			{Name: "go.mod", IsDir: false, IsDep: true},
-			{Name: "main.go", IsDir: false, IsDep: false},
-		},
-	}
-
-	output := capturePrintTree(t, info, true)
-
-	if !bytes.Contains([]byte(output), []byte("go.mod")) {
-		t.Error("deps-only mode should show go.mod")
-	}
-	if bytes.Contains([]byte(output), []byte("main.go")) {
-		t.Error("deps-only mode should not show main.go")
 	}
 }
 

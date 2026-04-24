@@ -3,6 +3,7 @@ package structure
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -28,6 +29,9 @@ type RepoInfo struct {
 	Name        string
 	Path        string
 	Language    string
+	Branch      string
+	Commit      string
+	Dirty       bool
 	FileCount   int
 }
 
@@ -36,6 +40,46 @@ type Node struct {
 	Name     string
 	IsDir    bool
 	IsDep    bool
+}
+
+type gitIgnoreChecker struct {
+	root  string
+	cache map[string]bool
+}
+
+func newGitIgnoreChecker(root string) *gitIgnoreChecker {
+	if _, err := os.Stat(filepath.Join(root, ".gitignore")); err != nil {
+		return nil
+	}
+	return &gitIgnoreChecker{
+		root:  root,
+		cache: make(map[string]bool),
+	}
+}
+
+func (c *gitIgnoreChecker) isIgnored(relPath string, isDir bool) bool {
+	if c == nil {
+		return false
+	}
+
+	key := relPath
+	if isDir {
+		key += "/"
+	}
+
+	if v, ok := c.cache[key]; ok {
+		return v
+	}
+
+	args := []string{"check-ignore", "-q", "--", key}
+	cmd := exec.Command("git", args...)
+	cmd.Dir = c.root
+
+	// Exit codes: 0 = ignored, 1 = not ignored, 128 = error.
+	err := cmd.Run()
+	ignored := err == nil
+	c.cache[key] = ignored
+	return ignored
 }
 
 func AnalyzeRepo(name, repoPath string, maxDepth int) (*RepoInfo, error) {
@@ -49,7 +93,10 @@ func AnalyzeRepo(name, repoPath string, maxDepth int) (*RepoInfo, error) {
 	fileCount := 0
 	language := ""
 
-	err := walkDir(repoPath, root, repoPath, 0, maxDepth, &fileCount, &lastMod, &language)
+	branch, commit, dirty := gitSummary(repoPath)
+
+	ignore := newGitIgnoreChecker(repoPath)
+	err := walkDir(repoPath, root, repoPath, ignore, 0, maxDepth, &fileCount, &lastMod, &language)
 	if err != nil {
 		return nil, err
 	}
@@ -57,12 +104,38 @@ func AnalyzeRepo(name, repoPath string, maxDepth int) (*RepoInfo, error) {
 	info.FileCount = fileCount
 	info.LastUpdated = lastMod
 	info.Language = language
+	info.Branch = branch
+	info.Commit = commit
+	info.Dirty = dirty
 	info.Children = root.Children
 
 	return info, nil
 }
 
-func walkDir(dirPath string, node *Node, rootPath string, depth, maxDepth int, fileCount *int, lastMod *time.Time, language *string) error {
+func gitSummary(repoPath string) (branch string, commit string, dirty bool) {
+	// If this isn't a git repo, just return empty metadata.
+	if _, err := os.Stat(filepath.Join(repoPath, ".git")); err != nil {
+		return "", "", false
+	}
+
+	branch = strings.TrimSpace(string(gitOut(repoPath, "rev-parse", "--abbrev-ref", "HEAD")))
+	commit = strings.TrimSpace(string(gitOut(repoPath, "rev-parse", "--short", "HEAD")))
+	// `git status --porcelain` is empty when clean.
+	dirty = strings.TrimSpace(string(gitOut(repoPath, "status", "--porcelain"))) != ""
+	return branch, commit, dirty
+}
+
+func gitOut(repoPath string, args ...string) []byte {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repoPath
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	return out
+}
+
+func walkDir(dirPath string, node *Node, rootPath string, ignore *gitIgnoreChecker, depth, maxDepth int, fileCount *int, lastMod *time.Time, language *string) error {
 	if maxDepth > 0 && depth >= maxDepth {
 		return nil
 	}
@@ -87,6 +160,11 @@ func walkDir(dirPath string, node *Node, rootPath string, depth, maxDepth int, f
 			continue
 		}
 
+		rel, err := filepath.Rel(rootPath, filepath.Join(dirPath, name))
+		if err == nil && ignore.isIgnored(rel, entry.IsDir()) {
+			continue
+		}
+
 		childPath := filepath.Join(dirPath, name)
 		isDep := false
 
@@ -104,7 +182,7 @@ func walkDir(dirPath string, node *Node, rootPath string, depth, maxDepth int, f
 		}
 
 		if entry.IsDir() {
-			if err := walkDir(childPath, child, rootPath, depth+1, maxDepth, fileCount, lastMod, language); err != nil {
+			if err := walkDir(childPath, child, rootPath, ignore, depth+1, maxDepth, fileCount, lastMod, language); err != nil {
 				continue
 			}
 		} else {
@@ -121,17 +199,31 @@ func walkDir(dirPath string, node *Node, rootPath string, depth, maxDepth int, f
 	return nil
 }
 
-func PrintTree(info *RepoInfo, showDepsOnly bool) {
+func PrintTree(info *RepoInfo) {
 	fmt.Printf("%s", info.Name)
 	if info.Language != "" {
 		fmt.Printf(" [%s]", info.Language)
 	}
-	fmt.Printf(" (%d files)\n", info.FileCount)
 
-	printNodes(info.Children, "", showDepsOnly)
+	meta := []string{}
+	if info.Branch != "" {
+		meta = append(meta, info.Branch)
+	}
+	if info.Commit != "" {
+		meta = append(meta, info.Commit)
+	}
+	if info.Dirty {
+		meta = append(meta, "dirty")
+	}
+	if len(meta) > 0 {
+		fmt.Printf(" (%s)", strings.Join(meta, " "))
+	}
+	fmt.Println()
+
+	printNodes(info.Children, "")
 }
 
-func printNodes(nodes []*Node, prefix string, showDepsOnly bool) {
+func printNodes(nodes []*Node, prefix string) {
 	for i, node := range nodes {
 		isLast := i == len(nodes)-1
 		connector := "├── "
@@ -140,20 +232,10 @@ func printNodes(nodes []*Node, prefix string, showDepsOnly bool) {
 			connector = "└── "
 			childPrefix = prefix + "    "
 		}
-
-		if showDepsOnly && !node.IsDir && !node.IsDep {
-			continue
-		}
-
-		depMark := ""
-		if node.IsDep {
-			depMark = " *"
-		}
-
-		fmt.Printf("%s%s%s%s\n", prefix, connector, node.Name, depMark)
+		fmt.Printf("%s%s%s\n", prefix, connector, node.Name)
 
 		if node.IsDir && len(node.Children) > 0 {
-			printNodes(node.Children, childPrefix, showDepsOnly)
+			printNodes(node.Children, childPrefix)
 		}
 	}
 }

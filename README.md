@@ -194,10 +194,9 @@ xr diff -- --stat                        # pass flags/args to git diff (use -- b
 Display the directory structure of repositories.
 
 ```sh
-xr tree                # all repos
-xr tree project-a      # specific repo
+xr tree                # list repos
+xr tree project-a      # show tree for a specific repo
 xr tree --depth 2      # limit depth
-xr tree --deps         # highlight dependency files
 ```
 
 ## Global Flags
