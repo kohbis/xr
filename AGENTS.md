@@ -19,6 +19,7 @@ xr/
 │   ├── init.go              # xr init
 │   ├── tree.go              # xr tree
 │   ├── diff.go              # xr diff
+│   ├── skill.go             # xr skill
 │   ├── helpers.go           # Shared CLI helpers
 │   └── repo/                # xr repo subcommands
 │       ├── cmd.go           # Parent repo command

@@ -199,6 +199,14 @@ xr tree project-a      # show tree for a specific repo
 xr tree --depth 2      # limit depth
 ```
 
+### `xr skill`
+
+Print the repository's `SKILL.md` to stdout.
+
+```sh
+xr skill
+```
+
 ## Global Flags
 
 | Flag | Description |
@@ -207,4 +215,7 @@ xr tree --depth 2      # limit depth
 
 ## For AI Agents
 
-`xr` is designed for use by AI agents managing multi-repository workspaces. [`SKILL.md`](./SKILL.md) documents all commands, flags, CI checks, and cross-repo workflow patterns from an agent's perspective. Placing it where your agent framework reads context makes `xr` immediately usable by the agent.
+`xr` is designed for use by AI agents managing multi-repository workspaces.
+
+- **Using `xr` as a tool**: see [`SKILL.md`](./SKILL.md) (agent-focused command/flag reference and workflows). If your agent framework supports loading context from stdout, you can also run `xr skill` to print it.
+- **Contributing to `xr`**: see [`AGENTS.md`](./AGENTS.md) (architecture, conventions, and CI requirements).
