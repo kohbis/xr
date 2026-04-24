@@ -539,6 +539,21 @@ type SyncOptions struct {
 	Fetch  bool // fetch from remote before switching branch
 	Prune  bool // prune deleted remote branches during fetch
 	Submod bool // update submodules recursively
+	DryRun bool // show what would be done, perform no actions
+
+	// AllowDirty controls behavior when the working tree is dirty and sync would
+	// change branches or pull. When false, the repo is skipped unless ConfirmDirty
+	// returns true.
+	AllowDirty bool
+
+	// ConfirmDirty is an optional callback used to decide whether to proceed when
+	// the working tree is dirty and sync would be disruptive (checkout/pull).
+	// Return true to proceed, false to skip.
+	ConfirmDirty func(repo config.Repository, reason string) (bool, error)
+
+	// ConfirmCheckout is an optional callback used to confirm switching branches.
+	// Return true to proceed with checkout, false to skip the repo.
+	ConfirmCheckout func(repo config.Repository, fromBranch, toBranch string) (bool, error)
 }
 
 // SyncResult holds the outcome of a Sync operation.
@@ -614,11 +629,12 @@ func (w *Workspace) syncSymlink(repo config.Repository, destPath string, opts Sy
 		return true, nil
 	}
 
-	if err := w.syncGitRepo(repo, realPath, opts); err != nil {
+	skipped, err := w.syncGitRepo(repo, realPath, opts)
+	if err != nil {
 		return false, err
 	}
 
-	return false, nil
+	return skipped, nil
 }
 
 func (w *Workspace) syncClone(repo config.Repository, destPath string, opts SyncOptions) (bool, error) {
@@ -629,12 +645,19 @@ func (w *Workspace) syncClone(repo config.Repository, destPath string, opts Sync
 		return true, nil
 	}
 
-	if err := w.syncGitRepo(repo, destPath, opts); err != nil {
+	skipped, err := w.syncGitRepo(repo, destPath, opts)
+	if err != nil {
 		return false, err
 	}
 
 	// Update submodules within the clone
 	if opts.Submod {
+		if opts.DryRun {
+			if hasSubmodules(destPath) {
+				output.PrintSyncAction("preview: would update submodules")
+			}
+			return true, nil
+		}
 		if hasSubmodules(destPath) {
 			output.PrintSyncAction("updating submodules")
 			if err := runGitQuiet(destPath, "submodule", "update", "--init", "--recursive"); err != nil {
@@ -644,7 +667,7 @@ func (w *Workspace) syncClone(repo config.Repository, destPath string, opts Sync
 		}
 	}
 
-	return false, nil
+	return skipped, nil
 }
 
 func (w *Workspace) syncSubmodule(repo config.Repository, destPath string, opts SyncOptions) (bool, error) {
@@ -661,6 +684,15 @@ func (w *Workspace) syncSubmodule(repo config.Repository, destPath string, opts 
 		return false, fmt.Errorf("computing relative path: %w", err)
 	}
 
+	if opts.DryRun {
+		output.PrintSyncAction("preview: would initialize submodule")
+		skipped, err := w.syncGitRepo(repo, destPath, opts)
+		if err != nil {
+			return false, err
+		}
+		return skipped, nil
+	}
+
 	output.PrintSyncAction("initializing submodule")
 	cmd := exec.Command("git", "submodule", "update", "--init", "--recursive", "--", relPath)
 	cmd.Dir = w.Root
@@ -668,15 +700,87 @@ func (w *Workspace) syncSubmodule(repo config.Repository, destPath string, opts 
 		return false, fmt.Errorf("submodule update: %s", strings.TrimSpace(string(out)))
 	}
 
-	if err := w.syncGitRepo(repo, destPath, opts); err != nil {
+	skipped, err := w.syncGitRepo(repo, destPath, opts)
+	if err != nil {
 		return false, err
 	}
 
-	return false, nil
+	return skipped, nil
 }
 
 // syncGitRepo performs fetch, checkout, and pull on a git repository directory.
-func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOptions) error {
+func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOptions) (bool, error) {
+	currentBranch := gitCurrentBranch(dir)
+	dirty, err := gitIsDirty(dir)
+	if err != nil {
+		return false, err
+	}
+
+	needsCheckout := repo.Branch != "" && currentBranch != repo.Branch
+	needsPull := opts.Pull
+
+	if needsCheckout && opts.ConfirmCheckout != nil && !opts.DryRun {
+		ok, err := opts.ConfirmCheckout(repo, currentBranch, repo.Branch)
+		if err != nil {
+			return false, err
+		}
+		if !ok {
+			output.PrintSyncSkip("checkout skipped")
+			return true, nil
+		}
+	}
+
+	if dirty && (needsCheckout || needsPull) && !opts.AllowDirty {
+		reason := "dirty working tree"
+		if needsCheckout && needsPull {
+			reason += " (would checkout and pull)"
+		} else if needsCheckout {
+			reason += " (would checkout)"
+		} else {
+			reason += " (would pull)"
+		}
+
+		if opts.ConfirmDirty != nil {
+			ok, err := opts.ConfirmDirty(repo, reason)
+			if err != nil {
+				return false, err
+			}
+			if !ok {
+				output.PrintSyncSkip("dirty; skipped")
+				return true, nil
+			}
+		} else {
+			output.PrintSyncSkip("dirty; skipped (use --allow-dirty)")
+			return true, nil
+		}
+	}
+
+	if opts.DryRun {
+		if opts.Fetch {
+			if opts.Prune {
+				output.PrintSyncAction("preview: would fetch origin --prune")
+			} else {
+				output.PrintSyncAction("preview: would fetch origin")
+			}
+		}
+		if needsCheckout {
+			output.PrintSyncAction(fmt.Sprintf("preview: would checkout %s", repo.Branch))
+		}
+		if opts.Pull {
+			branch := repo.Branch
+			if branch == "" {
+				branch = currentBranch
+			}
+			if branch == "" {
+				output.PrintSyncFail("preview: could not determine branch for pull")
+			} else {
+				output.PrintSyncAction(fmt.Sprintf("preview: would pull origin/%s", branch))
+			}
+		}
+		output.PrintSyncSkip("preview")
+		return true, nil
+	}
+
 	// Fetch from remote
 	if opts.Fetch {
 		args := []string{"fetch", "origin"}
@@ -685,19 +789,18 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 		}
 		output.PrintSyncAction("fetching from origin")
 		if err := runGitQuiet(dir, args...); err != nil {
-			return fmt.Errorf("fetch: %w", err)
+			return false, fmt.Errorf("fetch: %w", err)
 		}
 	}
 
 	// Switch to configured branch if specified
 	if repo.Branch != "" {
-		currentBranch := gitCurrentBranch(dir)
 		if currentBranch == repo.Branch {
 			output.PrintSyncOK(fmt.Sprintf("already on %s", repo.Branch))
 		} else {
 			output.PrintSyncAction(fmt.Sprintf("switching %s → %s", currentBranch, repo.Branch))
 			if err := runGitQuiet(dir, "checkout", repo.Branch); err != nil {
-				return fmt.Errorf("checkout %s: %w", repo.Branch, err)
+				return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
 			}
 			output.PrintSyncOK(fmt.Sprintf("switched to %s", repo.Branch))
 		}
@@ -714,13 +817,23 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 		} else {
 			output.PrintSyncAction(fmt.Sprintf("pulling origin/%s", branch))
 			if err := runGitQuiet(dir, "pull", "origin", branch); err != nil {
-				return fmt.Errorf("pull origin/%s: %w", branch, err)
+				return false, fmt.Errorf("pull origin/%s: %w", branch, err)
 			}
 			output.PrintSyncOK("up to date")
 		}
 	}
 
-	return nil
+	return false, nil
+}
+
+func gitIsDirty(dir string) (bool, error) {
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(string(out)) != "", nil
 }
 
 // runGitQuiet runs a git command, suppressing stdout/stderr. On error, returns
