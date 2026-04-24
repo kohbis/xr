@@ -18,8 +18,9 @@ var (
 )
 
 var diffCmd = &cobra.Command{
-	Use:   "diff",
-	Short: "Run git diff across repositories (or optional pattern/file/history modes)",
+	Use:     "diff",
+	Short:   "Run git diff across repositories (or optional pattern/file/history modes)",
+	GroupID: "cross",
 	Long: `By default runs git diff in each repository (pager disabled). Optional arguments
 after -- are passed to git (e.g. "xr diff -- --stat").
 
