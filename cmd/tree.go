@@ -18,6 +18,7 @@ var (
 var treeCmd = &cobra.Command{
 	Use:               "tree [repo]",
 	Short:             "Show repository structure",
+	GroupID:           "cross",
 	Long:              `Display the directory structure of repositories in the workspace.`,
 	Args:              cobra.MaximumNArgs(1),
 	ValidArgsFunction: shellcomp.CompleteRepoNames,

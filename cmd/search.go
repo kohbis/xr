@@ -18,8 +18,9 @@ var (
 )
 
 var searchCmd = &cobra.Command{
-	Use:   "search <pattern>",
-	Short: "Search across all repositories",
+	Use:     "search <pattern>",
+	Short:   "Search across all repositories",
+	GroupID: "cross",
 	Long: `Search for a pattern across all repositories in the workspace.
 Uses ripgrep if available, falls back to built-in grep.`,
 	Args: cobra.ExactArgs(1),
