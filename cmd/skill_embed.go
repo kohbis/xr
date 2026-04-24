@@ -7,4 +7,3 @@ var skillMDEmbedded string
 func SetEmbeddedSkillMD(md string) {
 	skillMDEmbedded = md
 }
-
