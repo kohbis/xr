@@ -33,6 +33,13 @@ var skillCmd = &cobra.Command{
 			lastErr = err
 		}
 
+		// Installed binaries (e.g. Homebrew) won't have SKILL.md beside the executable.
+		// Fall back to the embedded copy set by main.
+		if skillMDEmbedded != "" {
+			fmt.Print(skillMDEmbedded)
+			return nil
+		}
+
 		return fmt.Errorf("SKILL.md not found (tried: %s): %w", candidates, lastErr)
 	},
 }
