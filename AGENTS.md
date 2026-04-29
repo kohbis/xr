@@ -14,7 +14,7 @@ For using the `xr` CLI as an agent tool across a multi-repository workspace, see
 xr/
 ├── main.go                  # Entry point, calls cmd.Execute()
 ├── cmd/                     # CLI commands (Cobra-based)
-│   ├── root.go              # Root command, global --config flag
+│   ├── root.go              # Root command, global --config / --no-color flags
 │   ├── search.go            # xr search
 │   ├── init.go              # xr init
 │   ├── tree.go              # xr tree
@@ -36,7 +36,7 @@ xr/
 │   ├── workspace/           # Workspace initialization and git operations
 │   ├── search/              # Cross-repo search (ripgrep + fallback)
 │   ├── structure/           # Directory tree analysis and display
-│   ├── output/              # ANSI-colored terminal output helpers
+│   ├── output/              # Human/JSON output helpers and result models
 │   └── diff/                # File comparison and git history search
 ├── go.mod                   # Module: github.com/kohbis/xr, Go 1.25.7
 ├── Makefile                 # Build, test, lint, release targets
@@ -134,7 +134,31 @@ Type inference in `normalize()`: local paths (starting with `/` or `~`) default 
 
 ### Output
 
-Use helpers from `internal/output` for consistent terminal formatting (colors, headers, warnings). Do not use `fmt.Println` directly for user-visible output in `internal/` packages — return strings or use the output helpers.
+Use helpers from `internal/output` for consistent terminal formatting and machine-readable output. The package now provides:
+- ANSI-colored output helpers for human-readable CLI output
+- shared result models (`CommandResult`, `RepoResult`) for JSON/report output
+- JSON helpers (`PrintJSON`, `WriteJSONFile`) for command output and file reports
+
+Global output controls:
+- `--no-color` disables ANSI escape sequences for automation logs.
+
+Do not use `fmt.Println` directly for user-visible output in `internal/` packages — return strings or use the output helpers.
+
+### Non-interactive and automation flags
+
+When adding/changing commands that prompt users, provide explicit non-interactive behavior:
+- `--non-interactive` should disable TTY prompts
+- `--yes` should explicitly opt into destructive or confirm-required actions
+- in non-interactive mode, commands should return clear errors instead of waiting for input
+
+Current commands with non-interactive support include `xr init`, `xr repo import`, `xr repo remove`, and `xr repo sync`.
+
+### JSON/report output conventions
+
+Prefer a consistent automation story across commands:
+- `--json` for structured stdout output
+- `--report <path>` for structured file output when the command produces aggregate results (for example, `xr repo sync` and selected `xr diff` modes)
+- include per-repository status and summary counts when applicable
 
 ### Commit messages
 

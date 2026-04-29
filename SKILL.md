@@ -42,19 +42,25 @@ Sets up a workspace from `repos.yaml`: creates the directory, runs `git init`, a
 
 ```sh
 xr repo list                            # show all repos with type, branch, path, source
+xr repo list --json                     # machine-readable repo status output
 xr repo add <name> -s <source>          # add a repo (type inferred from source)
 xr repo add <name> -s <url> -b main -t clone  # add as clone on specific branch
 xr repo add <name> -s <source> -p sub/dir     # specify relative path in workspace
 xr repo remove <name>                   # remove from config and workspace
 xr repo remove <name> --force           # skip confirmation prompt
+xr repo remove <name> --non-interactive --yes   # automation-safe removal
 xr repo remove <name> --config-only     # remove from config only, keep files
 xr repo sync                            # switch to configured branches in repos.yaml
 xr repo sync <name> [<name>...]         # sync specific repos only
 xr repo sync --fetch --pull             # fetch, switch branch, and pull latest
 xr repo sync --fetch --prune --pull     # fetch with prune, switch, and pull
 xr repo sync --submodules               # also update submodules recursively
+xr repo sync --json                     # structured sync result output
+xr repo sync --report sync-report.json  # write sync result report to file
+xr repo sync --non-interactive          # disable prompt-based confirmations
 xr repo import                          # discover repos in workspace dir and add to repos.yaml
 xr repo import --dry-run                # preview discovered repos without writing
+xr repo import --non-interactive --yes  # apply import without prompts
 ```
 
 **Agent use cases:**
@@ -78,6 +84,7 @@ xr search -g "*.go" "TODO"         # filter by file glob
 xr search -C 3 "panic"             # 3 lines of context
 xr search -r project-a "main"      # limit to one repo
 xr search -r a -r b "pattern"      # limit to multiple repos
+xr search --json "pattern"         # machine-readable match output
 ```
 
 **Agent use cases:**
@@ -94,6 +101,10 @@ xr diff                        # git diff in each repo (pager disabled)
 xr diff --pattern "version"        # show where pattern occurs per-repo (no diff output)
 xr diff --file go.mod              # unified diff of a file across all repos
 xr diff --history "fix:"           # search git commit messages across repos
+xr diff --pattern "foo" -r a -r b  # repo filter also applies to --pattern
+xr diff --file go.mod -r a -r b    # repo filter also applies to --file
+xr diff --history "fix:" --json    # structured diff history output
+xr diff --pattern "foo" --report diff-report.json  # write report for supported modes
 ```
 
 **Agent use cases:**
@@ -130,10 +141,20 @@ Interactively adds the workspace directory to `.gitignore`. Useful after `xr ini
 
 ### Config path override
 
-All commands accept a global flag:
+All commands accept global flags:
 
 ```sh
 xr --config path/to/repos.yaml <command>
+xr --no-color <command>   # disable ANSI colors for machine logs
 ```
 
 Useful when operating on multiple independent workspaces from the same working directory.
+
+---
+
+## Agent Automation Tips
+
+- Prefer `--json` when chaining `xr` output into other tools or prompts.
+- Use `--non-interactive --yes` for `init/import/remove` in CI or unattended runs.
+- Add `--no-color` for stable log parsing.
+- For sync orchestration, keep `xr repo sync --report <file>` as an artifact so failures can be triaged per repository.
