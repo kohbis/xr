@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/kohbis/xr/cmd/repo"
+	"github.com/kohbis/xr/cmd/task"
+	"github.com/kohbis/xr/internal/exitcode"
 	"github.com/kohbis/xr/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -24,6 +27,11 @@ Define repositories in repos.yaml and use xr to search, view, and compare across
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
+		var ee *exitcode.ExitError
+		if ok := errors.As(err, &ee); ok {
+			fmt.Fprintln(os.Stderr, ee.Error())
+			os.Exit(ee.Code)
+		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -45,11 +53,13 @@ func init() {
 	rootCmd.AddGroup(
 		&cobra.Group{ID: "workspace", Title: "Workspace"},
 		&cobra.Group{ID: "repo", Title: "Repository management"},
+		&cobra.Group{ID: "task", Title: "Task harness"},
 		&cobra.Group{ID: "cross", Title: "Cross-repository"},
 		&cobra.Group{ID: "meta", Title: "Other"},
 	)
 
 	rootCmd.AddCommand(repo.Cmd)
+	rootCmd.AddCommand(task.Cmd)
 
 	// Ensure the default completion command is present so it can be grouped.
 	rootCmd.InitDefaultCompletionCmd()
