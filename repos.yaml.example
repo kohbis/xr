@@ -12,6 +12,6 @@ repositories:
     path: project-b
 
   - name: local-lib
-    source: /Users/kohbis/workspace/local-lib  # local path -> symlink
+    source: /path/to/local-lib  # local path -> symlink
     type: symlink
     path: local-lib

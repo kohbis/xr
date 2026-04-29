@@ -79,145 +79,58 @@ repositories:
     path: local-lib
 ```
 
-## Commands
+## Usage (essentials)
 
-### `xr init [directory]`
+`xr` is designed for multi-repo workflows. Below are a few common “recipes” that show how it can be used in practice.
 
-Initialize a workspace. Creates the directory, runs `git init`, adds submodules for remote repos, and creates symlinks for local repos.
+If you want the full surface area, see `xr --help` and `xr <cmd> --help`.
 
-```sh
-xr init              # initialize in current directory
-xr init my-workspace # initialize in ./my-workspace
-xr init -f path/to/repos.yaml my-workspace
-```
-
-If `repos.yaml` is not found, you will be prompted to either create one interactively or initialize without repos (creates a `README.md` only).
-
-### `xr repo`
-
-Manage repositories in the workspace.
-
-#### `xr repo gitignore`
-
-Interactively add the workspace directory to `.gitignore`.
+### 1) Bootstrap a workspace from `repos.yaml`
 
 ```sh
-xr repo gitignore
+cp repos.yaml.example repos.yaml
+${EDITOR:-vim} repos.yaml
+xr init
 ```
 
-#### `xr repo list`
-
-List all repositories defined in `repos.yaml`, including runtime git status.
+### 2) Inspect repository status across the workspace
 
 ```sh
 xr repo list
 ```
 
-Example output:
+### 3) Keep a subset of repos in scope with a work plan
 
-```
-NAME         TYPE      BRANCH  CURRENT  STATUS  PATH         SOURCE
-project-a    git       main    main     =       project-a    git@github.com:user/project-a.git
-local-lib    symlink           -        !       local-lib    /Users/kohbis/workspace/local-lib
-```
-
-`STATUS` follows `__git_ps1`-style symbols:
-
-- `*` unstaged changes
-- `+` staged changes
-- `#` no `HEAD` yet (unborn branch)
-- `$` stash exists
-- `%` untracked files
-- `<` behind upstream
-- `>` ahead of upstream
-- `<>` diverged from upstream
-- `=` equal to upstream (or clean fallback)
-- `!` status could not be determined
-
-#### `xr repo sync [repo...]`
-
-Synchronize repositories to match the configuration in `repos.yaml`. Switches branches to match the configured branch, and optionally fetches/pulls latest changes.
+Work plans live at `.xr/work/<name>.yaml`. Start from “all repos”, then delete rows you don’t need, and optionally add `branch` to repos you want to pin.
 
 ```sh
-xr repo sync                          # switch to configured branches
-xr repo sync --fetch --pull           # fetch, switch branch, and pull
-xr repo sync project-a --pull         # sync specific repo with pull
-xr repo sync --fetch --prune --pull   # fetch with prune, switch, and pull
-xr repo sync --submodules             # also update submodules recursively
+xr work init example
+${EDITOR:-vim} .xr/work/example.yaml
+
+# preview by default
+xr repo sync --work example
+
+# apply when ready
+xr repo sync --work example --apply
 ```
 
-| Flag | Description |
-|------|-------------|
-| `--fetch` | Fetch from remote before switching branch |
-| `--pull` | Pull latest changes after switching branch |
-| `--prune` | Prune deleted remote branches during fetch (requires `--fetch`) |
-| `--submodules` | Update submodules recursively after sync |
-
-For symlink repos, branch switching / fetch / pull is performed only when the target is a git repository and `branch` is configured in `repos.yaml`. Symlinks without a configured branch are skipped.
-
-#### `xr repo import`
-
-Import repositories that already exist in the workspace directory into `repos.yaml`. Detects clones, submodules, and symlinks, shows a diff against the current config, and prompts before writing.
+### 4) Find a pattern across repositories
 
 ```sh
-xr repo import            # interactive: preview then confirm
-xr repo import --dry-run  # preview only, no writes
+xr search \"TODO\"
 ```
 
-Example output:
-
-```
-Found 2 new repo(s):
-  + my-lib               clone    https://github.com/foo/my-lib.git
-  + local-tools          symlink  /Users/kohbis/workspace/local-tools
-
-Add these to repos.yaml? [y/N]:
-```
-
-### `xr search <pattern>`
-
-Search for a pattern across all repositories.
+### 5) Compare a file across repos / inspect drift
 
 ```sh
-xr search "TODO"
-xr search -i "error"           # case-insensitive
-xr search -e "func\s+\w+"     # regex
-xr search -g "*.go" "handler"  # filter by glob
-xr search -C 3 "panic"         # show 3 lines of context
-xr search -r project-a "main"  # limit to specific repo
+xr diff --file go.mod
 ```
 
-### `xr diff`
-
-By default runs `git diff` in each repository (pager disabled). Optional arguments after `--` are passed to `git diff`.
-Other modes (`--pattern`, `--file`, `--history`) are mutually exclusive.
+### 6) Use `--config` when you manage multiple workspaces
 
 ```sh
-xr diff --pattern "version"              # regex: matches per line across repos
-xr diff --file go.mod                    # unified diff via the system `diff` command
-xr diff --history "fix:"                 # git log --grep in each repo
-xr diff --history "fix:" -r project-a    # same, limited to one repo
-xr diff                                  # git diff in each repo (pager disabled)
-xr diff -r project-a                     # git diff only in listed repos
-xr diff -- --stat                        # pass flags/args to git diff (use -- before them)
-```
-
-### `xr tree [repo]`
-
-Display the directory structure of repositories.
-
-```sh
-xr tree                # list repos
-xr tree project-a      # show tree for a specific repo
-xr tree --depth 2      # limit depth
-```
-
-### `xr skill`
-
-Print the repository's `SKILL.md` to stdout.
-
-```sh
-xr skill
+xr --config /path/to/workspace-a/repos.yaml repo list
+xr --config /path/to/workspace-b/repos.yaml repo sync --work example
 ```
 
 ## Global Flags

@@ -43,6 +43,7 @@ Sets up a workspace from `repos.yaml`: creates the directory, runs `git init`, a
 ```sh
 xr repo list                            # show all repos with type, branch, path, source
 xr repo list --json                     # machine-readable repo status output
+xr repo list --work <name>              # filter repos by work plan (.xr/work/<name>.yaml)
 xr repo add <name> -s <source>          # add a repo (type inferred from source)
 xr repo add <name> -s <url> -b main -t clone  # add as clone on specific branch
 xr repo add <name> -s <source> -p sub/dir     # specify relative path in workspace
@@ -58,6 +59,8 @@ xr repo sync --submodules               # also update submodules recursively
 xr repo sync --json                     # structured sync result output
 xr repo sync --report sync-report.json  # write sync result report to file
 xr repo sync --non-interactive          # disable prompt-based confirmations
+xr repo sync --work <name>              # scope sync to repos listed in .xr/work/<name>.yaml
+xr repo sync --create-branch-if-missing --fetch  # create local branch if missing (requires --fetch)
 xr repo import                          # discover repos in workspace dir and add to repos.yaml
 xr repo import --dry-run                # preview discovered repos without writing
 xr repo import --non-interactive --yes  # apply import without prompts
@@ -149,6 +152,29 @@ xr --no-color <command>   # disable ANSI colors for machine logs
 ```
 
 Useful when operating on multiple independent workspaces from the same working directory.
+
+---
+
+### Work plans (`xr work`)
+
+Work plans are YAML files stored under `.xr/work/<name>.yaml`. They scope multi-repo operations and can optionally override per-repo `branch` targets (used by `xr repo sync --work <name>`).
+
+```sh
+xr work init <name>          # create a work plan from repos.yaml (repo names only)
+xr work list                 # list available work plan names
+xr work checkout <name>      # alias for: xr repo sync --work <name>
+xr work delete <name> --yes  # delete the work plan file
+```
+
+Work plan schema:
+
+```yaml
+name: example
+repos:
+  - name: repo-a
+  - name: repo-b
+    branch: example
+```
 
 ---
 

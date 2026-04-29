@@ -14,25 +14,12 @@ For using the `xr` CLI as an agent tool across a multi-repository workspace, see
 xr/
 ├── main.go                  # Entry point, calls cmd.Execute()
 ├── cmd/                     # CLI commands (Cobra-based)
-│   ├── root.go              # Root command, global --config / --no-color flags
-│   ├── search.go            # xr search
-│   ├── init.go              # xr init
-│   ├── tree.go              # xr tree
-│   ├── diff.go              # xr diff
-│   ├── skill.go             # xr skill
-│   ├── helpers.go           # Shared CLI helpers
-│   └── repo/                # xr repo subcommands
-│       ├── cmd.go           # Parent repo command
-│       ├── list.go          # xr repo list
-│       ├── add.go           # xr repo add
-│       ├── remove.go        # xr repo remove
-│       ├── import.go        # xr repo import
-│       ├── sync.go          # xr repo sync
-│       ├── gitignore.go     # xr repo gitignore
-│       └── helpers.go       # Shared repo helpers
+│   ├── repo/                # Repository management commands
+│   └── work/                # Work plan commands (.xr/work)
 ├── internal/                # Internal packages (not exported)
 │   ├── config/              # repos.yaml loading/saving and data types
 │   ├── git/                 # Shared git command/query helpers
+│   ├── work/                # Work plan file schema & path helpers (.xr/work)
 │   ├── workspace/           # Workspace initialization and git operations
 │   ├── search/              # Cross-repo search (ripgrep + fallback)
 │   ├── structure/           # Directory tree analysis and display
