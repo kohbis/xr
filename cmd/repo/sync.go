@@ -18,6 +18,9 @@ var (
 	syncSubmod bool
 	syncApply  bool
 	syncDirty  bool
+	syncJSON   bool
+	syncReport string
+	syncNonInt bool
 )
 
 var syncCmd = &cobra.Command{
@@ -68,6 +71,9 @@ Examples:
 		if err != nil {
 			return err
 		}
+		if syncNonInt {
+			isTTY = false
+		}
 
 		proceedAllDirty := false
 		opts := workspace.SyncOptions{
@@ -114,6 +120,35 @@ Examples:
 			return fmt.Errorf("syncing workspace: %w", err)
 		}
 
+		repoResults := make([]output.RepoResult, 0, len(result.Repos))
+		for _, rr := range result.Repos {
+			repoResults = append(repoResults, output.RepoResult{
+				Name:   rr.Name,
+				Status: rr.Status,
+				Error:  rr.Error,
+			})
+		}
+		cmdResult := output.CommandResult{
+			Command: "repo sync",
+			Summary: map[string]int{
+				"synced":  result.Synced,
+				"skipped": result.Skipped,
+				"failed":  result.Failed,
+			},
+			Repos: repoResults,
+			Data: map[string]any{
+				"apply": !opts.DryRun,
+			},
+		}
+		if syncReport != "" {
+			if err := output.WriteJSONFile(syncReport, cmdResult); err != nil {
+				return fmt.Errorf("writing report: %w", err)
+			}
+		}
+		if syncJSON {
+			return output.PrintJSON(cmdResult)
+		}
+
 		if opts.DryRun {
 			fmt.Printf("\nPreview done: %d repo(s)\n", result.Skipped)
 			fmt.Printf("To execute: xr repo sync --apply\n")
@@ -134,4 +169,7 @@ func init() {
 	syncCmd.Flags().BoolVar(&syncSubmod, "submodules", false, "update submodules recursively after sync")
 	syncCmd.Flags().BoolVar(&syncApply, "apply", false, "apply changes (default: preview only)")
 	syncCmd.Flags().BoolVar(&syncDirty, "allow-dirty", false, "allow syncing repos with uncommitted changes without prompting")
+	syncCmd.Flags().BoolVar(&syncJSON, "json", false, "output in JSON format")
+	syncCmd.Flags().StringVar(&syncReport, "report", "", "write JSON report to file")
+	syncCmd.Flags().BoolVar(&syncNonInt, "non-interactive", false, "disable interactive prompts")
 }
