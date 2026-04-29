@@ -517,6 +517,13 @@ type SyncResult struct {
 	Synced  int
 	Skipped int
 	Failed  int
+	Repos   []SyncRepoResult
+}
+
+type SyncRepoResult struct {
+	Name   string
+	Status string
+	Error  string
 }
 
 // Sync synchronizes repositories to match repos.yaml configuration.
@@ -545,10 +552,23 @@ func (w *Workspace) Sync(repoNames []string, opts SyncOptions) (*SyncResult, err
 		if err != nil {
 			output.PrintSyncFail(fmt.Sprintf("%v", err))
 			result.Failed++
+			result.Repos = append(result.Repos, SyncRepoResult{
+				Name:   repo.Name,
+				Status: "failed",
+				Error:  err.Error(),
+			})
 		} else if skipped {
 			result.Skipped++
+			result.Repos = append(result.Repos, SyncRepoResult{
+				Name:   repo.Name,
+				Status: "skipped",
+			})
 		} else {
 			result.Synced++
+			result.Repos = append(result.Repos, SyncRepoResult{
+				Name:   repo.Name,
+				Status: "synced",
+			})
 		}
 	}
 
