@@ -92,6 +92,7 @@ var listCmd = &cobra.Command{
 		for _, r := range repos {
 			repoPath := filepath.Join(wsDir, r.Path)
 			current, status := repoRuntimeStatus(repoPath)
+			source := formatSource(cfgPath, r.Source)
 			rows = append(rows, map[string]string{
 				"name":    r.Name,
 				"type":    string(r.Type),
@@ -99,7 +100,7 @@ var listCmd = &cobra.Command{
 				"current": current,
 				"status":  status,
 				"path":    r.Path,
-				"source":  r.Source,
+				"source":  source,
 			})
 			repoStatus := "ok"
 			repoErr := ""
@@ -109,7 +110,7 @@ var listCmd = &cobra.Command{
 			}
 			result.Repos = append(result.Repos, output.RepoResult{Name: r.Name, Status: repoStatus, Error: repoErr})
 
-			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Name, r.Type, r.Branch, current, status, r.Path, r.Source); err != nil {
+			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Name, r.Type, r.Branch, current, status, r.Path, source); err != nil {
 				return err
 			}
 		}
@@ -127,6 +128,37 @@ func repoRuntimeStatus(repoPath string) (currentBranch string, status string) {
 		return "-", statusError
 	}
 	return snapshot.CurrentBranch, snapshot.Status
+}
+
+func formatSource(cfgPath, source string) string {
+	if source == "" {
+		return source
+	}
+	// Only try to shorten absolute filesystem paths.
+	if !filepath.IsAbs(source) {
+		return source
+	}
+
+	home, err := os.UserHomeDir()
+	if err == nil && home != "" {
+		home = filepath.Clean(home)
+		if source == home {
+			return "~"
+		}
+		prefix := home + string(os.PathSeparator)
+		if strings.HasPrefix(source, prefix) {
+			return "~" + string(os.PathSeparator) + strings.TrimPrefix(source, prefix)
+		}
+	}
+
+	cfgDir := filepath.Dir(cfgPath)
+	if cfgDir != "" {
+		if rel, err := filepath.Rel(cfgDir, source); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+			return rel
+		}
+	}
+
+	return source
 }
 
 func init() {
