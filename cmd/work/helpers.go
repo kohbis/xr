@@ -40,4 +40,3 @@ func loadRepoConfig(cmd *cobra.Command) (*config.Config, string, error) {
 	}
 	return cfg, cfgPath, nil
 }
-

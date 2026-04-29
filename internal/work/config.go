@@ -56,4 +56,3 @@ func Load(path string) (*File, error) {
 	}
 	return &f, nil
 }
-

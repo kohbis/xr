@@ -15,4 +15,3 @@ func init() {
 	Cmd.AddCommand(checkoutCmd)
 	Cmd.AddCommand(deleteCmd)
 }
-
