@@ -107,7 +107,7 @@ xr repo gitignore
 
 #### `xr repo list`
 
-List all repositories defined in `repos.yaml`.
+List all repositories defined in `repos.yaml`, including runtime git status.
 
 ```sh
 xr repo list
@@ -116,10 +116,23 @@ xr repo list
 Example output:
 
 ```
-NAME         TYPE      BRANCH  PATH         SOURCE
-project-a    git       main    project-a    git@github.com:user/project-a.git
-local-lib    symlink           local-lib    /Users/kohbis/workspace/local-lib
+NAME         TYPE      BRANCH  CURRENT  STATUS  PATH         SOURCE
+project-a    git       main    main     =       project-a    git@github.com:user/project-a.git
+local-lib    symlink           -        !       local-lib    /Users/kohbis/workspace/local-lib
 ```
+
+`STATUS` follows `__git_ps1`-style symbols:
+
+- `*` unstaged changes
+- `+` staged changes
+- `#` no `HEAD` yet (unborn branch)
+- `$` stash exists
+- `%` untracked files
+- `<` behind upstream
+- `>` ahead of upstream
+- `<>` diverged from upstream
+- `=` equal to upstream (or clean fallback)
+- `!` status could not be determined
 
 #### `xr repo sync [repo...]`
 

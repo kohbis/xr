@@ -3,12 +3,12 @@ package workspace
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/kohbis/xr/internal/config"
+	"github.com/kohbis/xr/internal/git"
 	"github.com/kohbis/xr/internal/output"
 )
 
@@ -107,11 +107,7 @@ func (w *Workspace) gitInit() error {
 		return nil // already initialized
 	}
 
-	cmd := exec.Command("git", "init")
-	cmd.Dir = w.Root
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := git.RunWithIO(w.Root, os.Stdout, os.Stderr, "init"); err != nil {
 		return fmt.Errorf("git init: %w", err)
 	}
 	return nil
@@ -181,11 +177,7 @@ func (w *Workspace) addSubmodule(repo config.Repository, destPath string) error 
 	}
 	args = append(args, repo.Source, relPath)
 
-	cmd := exec.Command("git", args...)
-	cmd.Dir = w.Root
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := git.RunWithIO(w.Root, os.Stdout, os.Stderr, args...); err != nil {
 		return fmt.Errorf("git submodule add: %w", err)
 	}
 	return nil
@@ -209,11 +201,7 @@ func (w *Workspace) addClone(repo config.Repository, destPath string) error {
 	}
 	args = append(args, repo.Source, destPath)
 
-	cmd := exec.Command("git", args...)
-	cmd.Dir = w.Root
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := git.RunWithIO(w.Root, os.Stdout, os.Stderr, args...); err != nil {
 		return fmt.Errorf("git clone: %w", err)
 	}
 
@@ -275,21 +263,13 @@ func (w *Workspace) updateSubmodule(repo config.Repository, destPath string, pul
 
 	fmt.Printf("  updating submodule %s\n", repo.Name)
 
-	cmd := exec.Command("git", "submodule", "update", "--init", "--recursive")
-	cmd.Dir = w.Root
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := git.RunWithIO(w.Root, os.Stdout, os.Stderr, "submodule", "update", "--init", "--recursive"); err != nil {
 		return fmt.Errorf("git submodule update: %w", err)
 	}
 
 	if pull {
 		fmt.Printf("  pulling %s\n", repo.Name)
-		pullCmd := exec.Command("git", "pull", "origin", repo.Branch)
-		pullCmd.Dir = destPath
-		pullCmd.Stdout = os.Stdout
-		pullCmd.Stderr = os.Stderr
-		if err := pullCmd.Run(); err != nil {
+		if err := git.RunWithIO(destPath, os.Stdout, os.Stderr, "pull", "origin", repo.Branch); err != nil {
 			return fmt.Errorf("git pull: %w", err)
 		}
 	}
@@ -308,11 +288,7 @@ func (w *Workspace) updateClone(repo config.Repository, destPath string, pull bo
 		if repo.Branch != "" {
 			args = append(args, repo.Branch)
 		}
-		cmd := exec.Command("git", args...)
-		cmd.Dir = destPath
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
+		if err := git.RunWithIO(destPath, os.Stdout, os.Stderr, args...); err != nil {
 			return fmt.Errorf("git pull: %w", err)
 		}
 	} else {
@@ -406,21 +382,13 @@ func (w *Workspace) removeSubmodule(repo config.Repository, destPath string) err
 		fmt.Printf("  submodule %s directory already removed, cleaning up references\n", repo.Name)
 	} else {
 		// git submodule deinit -f <path>
-		deinit := exec.Command("git", "submodule", "deinit", "-f", relPath)
-		deinit.Dir = w.Root
-		deinit.Stdout = os.Stdout
-		deinit.Stderr = os.Stderr
-		if err := deinit.Run(); err != nil {
+		if err := git.RunWithIO(w.Root, os.Stdout, os.Stderr, "submodule", "deinit", "-f", relPath); err != nil {
 			fmt.Printf("  warning: git submodule deinit: %v (continuing)\n", err)
 		}
 	}
 
 	// git rm -f --ignore-unmatch <path>
-	rm := exec.Command("git", "rm", "-f", "--ignore-unmatch", relPath)
-	rm.Dir = w.Root
-	rm.Stdout = os.Stdout
-	rm.Stderr = os.Stderr
-	if err := rm.Run(); err != nil {
+	if err := git.RunWithIO(w.Root, os.Stdout, os.Stderr, "rm", "-f", "--ignore-unmatch", relPath); err != nil {
 		fmt.Printf("  warning: git rm: %v (continuing)\n", err)
 	}
 
@@ -501,7 +469,7 @@ func detectRepo(wsDir string, entry os.DirEntry) (*config.Repository, error) {
 		repoType = config.RepoTypeGit
 	}
 
-	source := gitRemoteURL(path)
+	source, _ := git.RemoteURL(path)
 	branch := gitCurrentBranch(path)
 
 	return &config.Repository{
@@ -513,24 +481,12 @@ func detectRepo(wsDir string, entry os.DirEntry) (*config.Repository, error) {
 	}, nil
 }
 
-func gitRemoteURL(dir string) string {
-	cmd := exec.Command("git", "remote", "get-url", "origin")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
 func gitCurrentBranch(dir string) string {
-	cmd := exec.Command("git", "branch", "--show-current")
-	cmd.Dir = dir
-	out, err := cmd.Output()
+	branch, err := git.CurrentBranch(dir)
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(out))
+	return branch
 }
 
 // SyncOptions configures behavior of Sync.
@@ -694,9 +650,7 @@ func (w *Workspace) syncSubmodule(repo config.Repository, destPath string, opts 
 	}
 
 	output.PrintSyncAction("initializing submodule")
-	cmd := exec.Command("git", "submodule", "update", "--init", "--recursive", "--", relPath)
-	cmd.Dir = w.Root
-	if out, err := cmd.CombinedOutput(); err != nil {
+	if out, err := git.RunCombinedOutput(w.Root, "submodule", "update", "--init", "--recursive", "--", relPath); err != nil {
 		return false, fmt.Errorf("submodule update: %s", strings.TrimSpace(string(out)))
 	}
 
@@ -827,29 +781,13 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 }
 
 func gitIsDirty(dir string) (bool, error) {
-	cmd := exec.Command("git", "status", "--porcelain")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err != nil {
-		return false, err
-	}
-	return strings.TrimSpace(string(out)) != "", nil
+	return git.IsDirty(dir)
 }
 
 // runGitQuiet runs a git command, suppressing stdout/stderr. On error, returns
 // the combined output trimmed as the error message.
 func runGitQuiet(dir string, args ...string) error {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		msg := strings.TrimSpace(string(out))
-		if msg != "" {
-			return fmt.Errorf("%s", msg)
-		}
-		return err
-	}
-	return nil
+	return git.RunQuiet(dir, args...)
 }
 
 // hasSubmodules checks if a git repository has submodules.

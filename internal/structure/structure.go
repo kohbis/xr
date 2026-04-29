@@ -3,11 +3,12 @@ package structure
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/kohbis/xr/internal/git"
 )
 
 var depFiles = map[string]string{
@@ -71,13 +72,10 @@ func (c *gitIgnoreChecker) isIgnored(relPath string, isDir bool) bool {
 		return v
 	}
 
-	args := []string{"check-ignore", "-q", "--", key}
-	cmd := exec.Command("git", args...)
-	cmd.Dir = c.root
-
-	// Exit codes: 0 = ignored, 1 = not ignored, 128 = error.
-	err := cmd.Run()
-	ignored := err == nil
+	ignored, err := git.CheckIgnore(c.root, key)
+	if err != nil {
+		ignored = false
+	}
 	c.cache[key] = ignored
 	return ignored
 }
@@ -118,21 +116,10 @@ func gitSummary(repoPath string) (branch string, commit string, dirty bool) {
 		return "", "", false
 	}
 
-	branch = strings.TrimSpace(string(gitOut(repoPath, "rev-parse", "--abbrev-ref", "HEAD")))
-	commit = strings.TrimSpace(string(gitOut(repoPath, "rev-parse", "--short", "HEAD")))
-	// `git status --porcelain` is empty when clean.
-	dirty = strings.TrimSpace(string(gitOut(repoPath, "status", "--porcelain"))) != ""
+	branch, _ = git.CurrentBranch(repoPath)
+	commit, _ = git.ShortCommit(repoPath)
+	dirty, _ = git.IsDirty(repoPath)
 	return branch, commit, dirty
-}
-
-func gitOut(repoPath string, args ...string) []byte {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = repoPath
-	out, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
-	return out
 }
 
 func walkDir(dirPath string, node *Node, rootPath string, ignore *gitIgnoreChecker, depth, maxDepth int, fileCount *int, lastMod *time.Time, language *string) error {
