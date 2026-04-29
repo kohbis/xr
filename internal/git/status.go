@@ -145,4 +145,3 @@ func parsePorcelainFlags(porcelain string) (flags worktreeFlags) {
 	}
 	return flags
 }
-
