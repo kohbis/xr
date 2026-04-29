@@ -33,11 +33,19 @@ type PatternOccurrence struct {
 	Line    int
 }
 
-func CompareFile(cfg *config.Config, wsDir, fileName string) ([]FileComparison, error) {
+type HistoryResult struct {
+	Repo  string   `json:"repo"`
+	Lines []string `json:"lines"`
+}
+
+func CompareFile(cfg *config.Config, wsDir, fileName string, repoFilter []string) ([]FileComparison, error) {
 	var comparisons []FileComparison
 	var repoFiles []RepoFile
 
 	for _, repo := range cfg.Repositories {
+		if !repoMatchesFilter(repoFilter, repo.Name) {
+			continue
+		}
 		repoPath := filepath.Join(wsDir, repo.Path)
 		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
 			continue
@@ -81,7 +89,7 @@ func CompareFile(cfg *config.Config, wsDir, fileName string) ([]FileComparison, 
 	return comparisons, nil
 }
 
-func SearchPattern(cfg *config.Config, wsDir, pattern string) (map[string][]PatternOccurrence, error) {
+func SearchPattern(cfg *config.Config, wsDir, pattern string, repoFilter []string) (map[string][]PatternOccurrence, error) {
 	result := make(map[string][]PatternOccurrence)
 
 	re, err := regexp.Compile(pattern)
@@ -90,6 +98,9 @@ func SearchPattern(cfg *config.Config, wsDir, pattern string) (map[string][]Patt
 	}
 
 	for _, repo := range cfg.Repositories {
+		if !repoMatchesFilter(repoFilter, repo.Name) {
+			continue
+		}
 		repoPath := filepath.Join(wsDir, repo.Path)
 		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
 			continue
@@ -152,6 +163,24 @@ func repoMatchesFilter(filter []string, name string) bool {
 
 // SearchHistory runs git log --grep in each repository (optionally limited by repoFilter).
 func SearchHistory(cfg *config.Config, wsDir, query string, repoFilter []string) error {
+	results, err := SearchHistoryResults(cfg, wsDir, query, repoFilter)
+	if err != nil {
+		return err
+	}
+	for _, repoRes := range results {
+		output.PrintRepoHeader(repoRes.Repo)
+		if len(repoRes.Lines) == 0 {
+			fmt.Printf("  (no matches)\n")
+			continue
+		}
+		fmt.Print(strings.Join(repoRes.Lines, "\n"))
+		fmt.Println()
+	}
+	return nil
+}
+
+func SearchHistoryResults(cfg *config.Config, wsDir, query string, repoFilter []string) ([]HistoryResult, error) {
+	var results []HistoryResult
 	for _, repo := range cfg.Repositories {
 		if !repoMatchesFilter(repoFilter, repo.Name) {
 			continue
@@ -162,22 +191,25 @@ func SearchHistory(cfg *config.Config, wsDir, query string, repoFilter []string)
 			continue
 		}
 
-		output.PrintRepoHeader(repo.Name)
-
 		out, err := git.RunOutput(repoPath, "log", "--all", "--oneline", "--grep="+query)
 		if err != nil {
-			fmt.Printf("  (no git history available)\n")
+			results = append(results, HistoryResult{
+				Repo:  repo.Name,
+				Lines: []string{"(no git history available)"},
+			})
 			continue
 		}
-
-		if len(out) == 0 {
-			fmt.Printf("  (no matches)\n")
-		} else {
-			fmt.Print(string(out))
+		lines := []string{}
+		if len(out) > 0 {
+			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+				if strings.TrimSpace(line) != "" {
+					lines = append(lines, line)
+				}
+			}
 		}
+		results = append(results, HistoryResult{Repo: repo.Name, Lines: lines})
 	}
-
-	return nil
+	return results, nil
 }
 
 // GitDiff runs git diff in each repository workspace directory, forwarding args to git diff.
