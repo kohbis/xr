@@ -5,16 +5,21 @@ import (
 	"os"
 
 	"github.com/kohbis/xr/cmd/repo"
+	"github.com/kohbis/xr/internal/output"
 	"github.com/spf13/cobra"
 )
 
 var cfgFile string
+var noColor bool
 
 var rootCmd = &cobra.Command{
 	Use:   "xr",
 	Short: "Cross-repository search & management CLI",
 	Long: `xr is a CLI tool for searching and managing multiple repositories.
 Define repositories in repos.yaml and use xr to search, view, and compare across them.`,
+	PersistentPreRun: func(_ *cobra.Command, _ []string) {
+		output.SetColorEnabled(!noColor)
+	},
 }
 
 func Execute() {
@@ -35,6 +40,7 @@ func SetVersion(v string) {
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: repos.yaml in current directory)")
+	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable ANSI colors in output")
 
 	rootCmd.AddGroup(
 		&cobra.Group{ID: "workspace", Title: "Workspace"},
