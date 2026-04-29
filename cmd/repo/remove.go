@@ -13,6 +13,8 @@ import (
 var (
 	removeForce      bool
 	removeConfigOnly bool
+	removeNonInt     bool
+	removeYes        bool
 )
 
 var removeCmd = &cobra.Command{
@@ -31,6 +33,9 @@ Use --config-only to remove only from repos.yaml without touching the filesystem
 		isTTY, err := isInteractiveTTY()
 		if err != nil {
 			return err
+		}
+		if removeNonInt {
+			isTTY = false
 		}
 
 		cfgPath := cmd.Root().PersistentFlags().Lookup("config").Value.String()
@@ -77,9 +82,9 @@ Use --config-only to remove only from repos.yaml without touching the filesystem
 			fmt.Printf("  - %-20s %-8s %s\n", r.Name, string(r.Type), r.Path)
 		}
 
-		if !removeForce {
+		if !removeForce && !removeYes {
 			if !isTTY {
-				return fmt.Errorf("non-interactive remove requires --force")
+				return fmt.Errorf("non-interactive remove requires --force or --yes")
 			}
 			ok, err := promptConfirmRemove()
 			if err != nil {
@@ -144,4 +149,6 @@ func promptConfirmRemove() (bool, error) {
 func init() {
 	removeCmd.Flags().BoolVarP(&removeForce, "force", "f", false, "skip confirmation prompt")
 	removeCmd.Flags().BoolVar(&removeConfigOnly, "config-only", false, "remove only from config, keep filesystem intact")
+	removeCmd.Flags().BoolVar(&removeNonInt, "non-interactive", false, "disable interactive prompts")
+	removeCmd.Flags().BoolVarP(&removeYes, "yes", "y", false, "assume yes for prompts (with --non-interactive)")
 }

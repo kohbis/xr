@@ -14,6 +14,8 @@ import (
 )
 
 var initConfigFile string
+var initNonInteractive bool
+var initYes bool
 
 var initCmd = &cobra.Command{
 	Use:   "init [directory]",
@@ -35,23 +37,37 @@ and creates symlinks for local repos.`,
 		}
 
 		if _, err := os.Stat(absDir); os.IsNotExist(err) {
-			fmt.Printf("Directory %s does not exist. Create it? [y/N]: ", absDir)
-			answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-			answer = strings.TrimSpace(strings.ToLower(answer))
-			if answer != "y" && answer != "yes" {
-				fmt.Println("Aborted.")
-				return nil
+			if initNonInteractive && !initYes {
+				return fmt.Errorf("directory %s does not exist (use --yes to create in non-interactive mode)", absDir)
 			}
-			if err := os.MkdirAll(absDir, 0755); err != nil {
-				return fmt.Errorf("creating directory: %w", err)
+			if initNonInteractive && initYes {
+				if err := os.MkdirAll(absDir, 0755); err != nil {
+					return fmt.Errorf("creating directory: %w", err)
+				}
+			} else {
+				fmt.Printf("Directory %s does not exist. Create it? [y/N]: ", absDir)
+				answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+				answer = strings.TrimSpace(strings.ToLower(answer))
+				if answer != "y" && answer != "yes" {
+					fmt.Println("Aborted.")
+					return nil
+				}
+				if err := os.MkdirAll(absDir, 0755); err != nil {
+					return fmt.Errorf("creating directory: %w", err)
+				}
 			}
 		} else if dir == "." {
-			fmt.Printf("Initialize workspace in current directory (%s)? [y/N]: ", absDir)
-			answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-			answer = strings.TrimSpace(strings.ToLower(answer))
-			if answer != "y" && answer != "yes" {
-				fmt.Println("Aborted.")
-				return nil
+			if initNonInteractive && !initYes {
+				return fmt.Errorf("refusing to initialize current directory in non-interactive mode without --yes")
+			}
+			if !initNonInteractive {
+				fmt.Printf("Initialize workspace in current directory (%s)? [y/N]: ", absDir)
+				answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+				answer = strings.TrimSpace(strings.ToLower(answer))
+				if answer != "y" && answer != "yes" {
+					fmt.Println("Aborted.")
+					return nil
+				}
 			}
 		}
 
@@ -62,6 +78,9 @@ and creates symlinks for local repos.`,
 
 		var cfg *config.Config
 		if _, err := os.Stat(cfgPath); os.IsNotExist(err) {
+			if initNonInteractive {
+				return fmt.Errorf("config file not found: %s (create it first or run interactively)", cfgPath)
+			}
 			fmt.Printf("Config file not found: %s\n", cfgPath)
 			fmt.Println("  1) Create repos.yaml now")
 			fmt.Println("  2) Initialize without repos (creates README only)")
@@ -97,10 +116,15 @@ and creates symlinks for local repos.`,
 			return fmt.Errorf("initializing workspace: %w", err)
 		}
 
-		fmt.Printf("\nAdd repos directory (%s) to .gitignore? [y/N]: ", cfg.Workspace)
-		ignoreAnswer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-		ignoreAnswer = strings.TrimSpace(strings.ToLower(ignoreAnswer))
-		ignoreWorkspace := ignoreAnswer == "y" || ignoreAnswer == "yes"
+		ignoreWorkspace := false
+		if initNonInteractive {
+			ignoreWorkspace = initYes
+		} else {
+			fmt.Printf("\nAdd repos directory (%s) to .gitignore? [y/N]: ", cfg.Workspace)
+			ignoreAnswer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+			ignoreAnswer = strings.TrimSpace(strings.ToLower(ignoreAnswer))
+			ignoreWorkspace = ignoreAnswer == "y" || ignoreAnswer == "yes"
+		}
 
 		if err := ws.CreateGitignore(ignoreWorkspace); err != nil {
 			return fmt.Errorf("creating .gitignore: %w", err)
@@ -115,6 +139,8 @@ and creates symlinks for local repos.`,
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().StringVarP(&initConfigFile, "file", "f", "", "repos.yaml config file path")
+	initCmd.Flags().BoolVar(&initNonInteractive, "non-interactive", false, "disable interactive prompts")
+	initCmd.Flags().BoolVarP(&initYes, "yes", "y", false, "assume yes for prompts (with --non-interactive)")
 }
 
 func prompt(reader *bufio.Reader, label, defaultVal string) string {

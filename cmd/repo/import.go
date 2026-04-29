@@ -14,6 +14,8 @@ import (
 )
 
 var importDryRun bool
+var importNonInteractive bool
+var importYes bool
 
 var importCmd = &cobra.Command{
 	Use:   "import",
@@ -71,13 +73,19 @@ var importCmd = &cobra.Command{
 			return nil
 		}
 
-		fmt.Print("\nAdd these to repos.yaml? [y/N]: ")
-		reader := bufio.NewReader(os.Stdin)
-		answer, _ := reader.ReadString('\n')
-		answer = strings.TrimSpace(strings.ToLower(answer))
-		if answer != "y" {
-			fmt.Println("Aborted.")
-			return nil
+		if importNonInteractive {
+			if !importYes {
+				return fmt.Errorf("non-interactive import requires --yes to apply changes")
+			}
+		} else {
+			fmt.Print("\nAdd these to repos.yaml? [y/N]: ")
+			reader := bufio.NewReader(os.Stdin)
+			answer, _ := reader.ReadString('\n')
+			answer = strings.TrimSpace(strings.ToLower(answer))
+			if answer != "y" {
+				fmt.Println("Aborted.")
+				return nil
+			}
 		}
 
 		cfg.Repositories = append(cfg.Repositories, newRepos...)
@@ -92,4 +100,6 @@ var importCmd = &cobra.Command{
 
 func init() {
 	importCmd.Flags().BoolVar(&importDryRun, "dry-run", false, "preview only, do not write")
+	importCmd.Flags().BoolVar(&importNonInteractive, "non-interactive", false, "disable interactive prompts")
+	importCmd.Flags().BoolVarP(&importYes, "yes", "y", false, "assume yes for prompts (with --non-interactive)")
 }
