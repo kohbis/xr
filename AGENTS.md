@@ -32,6 +32,7 @@ xr/
 │       └── helpers.go       # Shared repo helpers
 ├── internal/                # Internal packages (not exported)
 │   ├── config/              # repos.yaml loading/saving and data types
+│   ├── git/                 # Shared git command/query helpers
 │   ├── workspace/           # Workspace initialization and git operations
 │   ├── search/              # Cross-repo search (ripgrep + fallback)
 │   ├── structure/           # Directory tree analysis and display
@@ -106,6 +107,7 @@ All four must pass before merging.
 - `cmd/` contains only CLI wiring (flags, args, output). Business logic belongs in `internal/`.
 - `internal/` packages are independent and do not import each other, except `config` which is a shared dependency.
 - New commands go in `cmd/`; new logic goes in `internal/`.
+- For git interactions in internal packages, prefer `internal/git` helpers over direct `exec.Command("git", ...)`.
 
 ### Adding a new command
 

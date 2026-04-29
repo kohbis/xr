@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/kohbis/xr/internal/config"
+	"github.com/kohbis/xr/internal/git"
 	"github.com/kohbis/xr/internal/output"
 )
 
@@ -163,9 +164,7 @@ func SearchHistory(cfg *config.Config, wsDir, query string, repoFilter []string)
 
 		output.PrintRepoHeader(repo.Name)
 
-		cmd := exec.Command("git", "log", "--all", "--oneline", "--grep="+query)
-		cmd.Dir = repoPath
-		out, err := cmd.Output()
+		out, err := git.RunOutput(repoPath, "log", "--all", "--oneline", "--grep="+query)
 		if err != nil {
 			fmt.Printf("  (no git history available)\n")
 			continue
@@ -198,9 +197,7 @@ func GitDiff(cfg *config.Config, wsDir string, repoFilter []string, gitArgs []st
 
 		output.PrintRepoHeader(repo.Name)
 
-		cmd := exec.Command("git", gitCmd...)
-		cmd.Dir = repoPath
-		out, err := cmd.CombinedOutput()
+		out, err := git.RunCombinedOutput(repoPath, gitCmd...)
 		if err != nil {
 			var exitErr *exec.ExitError
 			if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
