@@ -15,6 +15,7 @@ var (
 	searchContext    int
 	searchRegex      bool
 	searchRepo       []string
+	searchJSON       bool
 )
 
 var searchCmd = &cobra.Command{
@@ -47,6 +48,34 @@ Uses ripgrep if available, falls back to built-in grep.`,
 		matches, err := search.Search(cfg, wsDir, opts)
 		if err != nil {
 			return fmt.Errorf("search failed: %w", err)
+		}
+		repoCounts := make(map[string]int)
+		for _, m := range matches {
+			if !m.IsContext {
+				repoCounts[m.Repo]++
+			}
+		}
+		repoResults := make([]output.RepoResult, 0, len(repoCounts))
+		for name, c := range repoCounts {
+			repoResults = append(repoResults, output.RepoResult{
+				Name:    name,
+				Status:  "matched",
+				Metrics: map[string]int{"matches": c},
+			})
+		}
+		result := output.CommandResult{
+			Command: "search",
+			Summary: map[string]int{
+				"matches": countMatches(matches),
+				"lines":   len(matches),
+			},
+			Repos: repoResults,
+			Data: map[string]any{
+				"matches": matches,
+			},
+		}
+		if searchJSON {
+			return output.PrintJSON(result)
 		}
 
 		if len(matches) == 0 {
@@ -85,5 +114,6 @@ func init() {
 	searchCmd.Flags().IntVarP(&searchContext, "context", "C", 0, "lines of context around matches")
 	searchCmd.Flags().BoolVarP(&searchRegex, "regex", "e", false, "treat pattern as regular expression")
 	searchCmd.Flags().StringArrayVarP(&searchRepo, "repo", "r", nil, "limit search to specific repos")
+	searchCmd.Flags().BoolVar(&searchJSON, "json", false, "output in JSON format")
 	cobra.CheckErr(searchCmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))
 }

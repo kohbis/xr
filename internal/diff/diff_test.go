@@ -34,7 +34,7 @@ func TestSearchPattern_MatchesAcrossRepos(t *testing.T) {
 		},
 	}
 
-	result, err := SearchPattern(cfg, reposDir, "version")
+	result, err := SearchPattern(cfg, reposDir, "version", nil)
 	if err != nil {
 		t.Fatalf("SearchPattern() error = %v", err)
 	}
@@ -61,7 +61,7 @@ func TestSearchPattern_InvalidRegex(t *testing.T) {
 		Repositories: []config.Repository{},
 	}
 
-	_, err := SearchPattern(cfg, "/tmp", "[invalid")
+	_, err := SearchPattern(cfg, "/tmp", "[invalid", nil)
 	if err == nil {
 		t.Fatal("SearchPattern() expected error for invalid regex, got nil")
 	}
@@ -88,7 +88,7 @@ func TestSearchPattern_SkipsHiddenFiles(t *testing.T) {
 		},
 	}
 
-	result, err := SearchPattern(cfg, reposDir, "secret")
+	result, err := SearchPattern(cfg, reposDir, "secret", nil)
 	if err != nil {
 		t.Fatalf("SearchPattern() error = %v", err)
 	}
@@ -107,7 +107,7 @@ func TestSearchPattern_SkipsMissingRepo(t *testing.T) {
 		},
 	}
 
-	result, err := SearchPattern(cfg, "/tmp/nonexistent-ws", "anything")
+	result, err := SearchPattern(cfg, "/tmp/nonexistent-ws", "anything", nil)
 	if err != nil {
 		t.Fatalf("SearchPattern() error = %v", err)
 	}
@@ -140,7 +140,7 @@ func TestCompareFile_TwoReposWithSameFile(t *testing.T) {
 		},
 	}
 
-	comparisons, err := CompareFile(cfg, reposDir, "Makefile")
+	comparisons, err := CompareFile(cfg, reposDir, "Makefile", nil)
 	if err != nil {
 		t.Fatalf("CompareFile() error = %v", err)
 	}
@@ -171,7 +171,7 @@ func TestCompareFile_SingleRepoNoComparison(t *testing.T) {
 		},
 	}
 
-	comparisons, err := CompareFile(cfg, reposDir, "file.txt")
+	comparisons, err := CompareFile(cfg, reposDir, "file.txt", nil)
 	if err != nil {
 		t.Fatalf("CompareFile() error = %v", err)
 	}
@@ -204,7 +204,7 @@ func TestCompareFile_NestedFiles(t *testing.T) {
 		},
 	}
 
-	comparisons, err := CompareFile(cfg, reposDir, "app.conf")
+	comparisons, err := CompareFile(cfg, reposDir, "app.conf", nil)
 	if err != nil {
 		t.Fatalf("CompareFile() error = %v", err)
 	}
@@ -235,7 +235,7 @@ func TestCompareFile_FileNotFound(t *testing.T) {
 		},
 	}
 
-	comparisons, err := CompareFile(cfg, reposDir, "nonexistent.txt")
+	comparisons, err := CompareFile(cfg, reposDir, "nonexistent.txt", nil)
 	if err != nil {
 		t.Fatalf("CompareFile() error = %v", err)
 	}
@@ -263,7 +263,7 @@ func TestSearchPattern_RegexMatch(t *testing.T) {
 		},
 	}
 
-	result, err := SearchPattern(cfg, reposDir, `func\s+\w+`)
+	result, err := SearchPattern(cfg, reposDir, `func\s+\w+`, nil)
 	if err != nil {
 		t.Fatalf("SearchPattern() error = %v", err)
 	}
@@ -293,7 +293,7 @@ func TestSearchPattern_LineNumbers(t *testing.T) {
 		},
 	}
 
-	result, err := SearchPattern(cfg, reposDir, "target")
+	result, err := SearchPattern(cfg, reposDir, "target", nil)
 	if err != nil {
 		t.Fatalf("SearchPattern() error = %v", err)
 	}
