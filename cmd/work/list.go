@@ -70,7 +70,9 @@ var listCmd = &cobra.Command{
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		_, _ = fmt.Fprintln(w, "NAME")
 		for _, p := range plans {
-			fmt.Fprintf(w, "%s\n", p)
+			if _, err := fmt.Fprintf(w, "%s\n", p); err != nil {
+				return err
+			}
 		}
 		return w.Flush()
 	},
@@ -79,4 +81,3 @@ var listCmd = &cobra.Command{
 func init() {
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "output in JSON format")
 }
-

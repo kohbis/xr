@@ -43,4 +43,3 @@ func SafeFilePath(root, name string) (string, error) {
 	}
 	return FilePath(root, name), nil
 }
-

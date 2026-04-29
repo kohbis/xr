@@ -87,4 +87,3 @@ var initCmd = &cobra.Command{
 func init() {
 	initCmd.Flags().BoolVar(&initForce, "force", false, "overwrite if the work plan already exists")
 }
-

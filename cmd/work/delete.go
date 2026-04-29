@@ -41,4 +41,3 @@ var deleteCmd = &cobra.Command{
 func init() {
 	deleteCmd.Flags().BoolVar(&deleteYes, "yes", false, "delete the work plan (required)")
 }
-

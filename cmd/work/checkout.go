@@ -9,12 +9,12 @@ import (
 )
 
 var (
-	checkoutApply                bool
-	checkoutFetch                bool
-	checkoutPull                 bool
-	checkoutPrune                bool
-	checkoutSubmodules           bool
-	checkoutAllowDirty           bool
+	checkoutApply                 bool
+	checkoutFetch                 bool
+	checkoutPull                  bool
+	checkoutPrune                 bool
+	checkoutSubmodules            bool
+	checkoutAllowDirty            bool
 	checkoutCreateBranchIfMissing bool
 )
 
@@ -70,4 +70,3 @@ func init() {
 	checkoutCmd.Flags().BoolVar(&checkoutAllowDirty, "allow-dirty", false, "allow syncing repos with uncommitted changes without prompting")
 	checkoutCmd.Flags().BoolVar(&checkoutCreateBranchIfMissing, "create-branch-if-missing", false, "create local branch when missing (from current HEAD)")
 }
-

@@ -14,13 +14,13 @@ import (
 )
 
 var (
-	syncPull   bool
-	syncFetch  bool
-	syncPrune  bool
-	syncSubmod bool
-	syncApply  bool
-	syncDirty  bool
-	syncWork   string
+	syncPull                  bool
+	syncFetch                 bool
+	syncPrune                 bool
+	syncSubmod                bool
+	syncApply                 bool
+	syncDirty                 bool
+	syncWork                  string
 	syncCreateBranchIfMissing bool
 )
 
@@ -121,7 +121,7 @@ Examples:
 			Submod: syncSubmod,
 			DryRun: !syncApply,
 
-			AllowDirty: syncDirty,
+			AllowDirty:            syncDirty,
 			CreateBranchIfMissing: syncCreateBranchIfMissing,
 		}
 		if isTTY && !opts.AllowDirty {
