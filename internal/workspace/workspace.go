@@ -3,6 +3,7 @@ package workspace
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -497,6 +498,11 @@ type SyncOptions struct {
 	Submod bool // update submodules recursively
 	DryRun bool // show what would be done, perform no actions
 
+	// CreateBranchIfMissing creates a local branch when checkout fails and the
+	// remote tracking branch is also unavailable. The branch is created from the
+	// current HEAD.
+	CreateBranchIfMissing bool
+
 	// AllowDirty controls behavior when the working tree is dirty and sync would
 	// change branches or pull. When false, the repo is skipped unless ConfirmDirty
 	// returns true.
@@ -749,12 +755,36 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 
 	// Switch to configured branch if specified
 	if repo.Branch != "" {
+		if opts.CreateBranchIfMissing && !opts.Fetch {
+			return false, fmt.Errorf("create-branch-if-missing requires fetch")
+		}
 		if currentBranch == repo.Branch {
 			output.PrintSyncOK(fmt.Sprintf("already on %s", repo.Branch))
 		} else {
 			output.PrintSyncAction(fmt.Sprintf("switching %s → %s", currentBranch, repo.Branch))
 			if err := runGitQuiet(dir, "checkout", repo.Branch); err != nil {
-				return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
+				remoteExists, rerr := gitRefExists(dir, "refs/remotes/origin/"+repo.Branch)
+				if rerr != nil {
+					return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
+				}
+				if remoteExists {
+					if err2 := runGitQuiet(dir, "checkout", "-b", repo.Branch, "--track", "origin/"+repo.Branch); err2 != nil {
+						return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
+					}
+				} else if opts.CreateBranchIfMissing {
+					localExists, lerr := gitRefExists(dir, "refs/heads/"+repo.Branch)
+					if lerr != nil {
+						return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
+					}
+					if localExists {
+						return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
+					}
+					if err3 := runGitQuiet(dir, "checkout", "-b", repo.Branch); err3 != nil {
+						return false, fmt.Errorf("create branch %s: %w", repo.Branch, err3)
+					}
+				} else {
+					return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
+				}
 			}
 			output.PrintSyncOK(fmt.Sprintf("switched to %s", repo.Branch))
 		}
@@ -788,6 +818,18 @@ func gitIsDirty(dir string) (bool, error) {
 // the combined output trimmed as the error message.
 func runGitQuiet(dir string, args ...string) error {
 	return git.RunQuiet(dir, args...)
+}
+
+func gitRefExists(dir, ref string) (bool, error) {
+	err := git.Run(dir, "rev-parse", "--verify", "--quiet", ref)
+	if err == nil {
+		return true, nil
+	}
+	// rev-parse returns exit code 1 when ref is missing.
+	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, err
 }
 
 // hasSubmodules checks if a git repository has submodules.

@@ -7,8 +7,10 @@ import (
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/output"
 	"github.com/kohbis/xr/internal/shellcomp"
+	"github.com/kohbis/xr/internal/work"
 	"github.com/kohbis/xr/internal/workspace"
 	"github.com/spf13/cobra"
+	"strings"
 )
 
 var (
@@ -18,6 +20,8 @@ var (
 	syncSubmod bool
 	syncApply  bool
 	syncDirty  bool
+	syncWork   string
+	syncCreateBranchIfMissing bool
 )
 
 var syncCmd = &cobra.Command{
@@ -47,14 +51,54 @@ Examples:
   xr repo sync`,
 	ValidArgsFunction: shellcomp.CompleteRepoNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig(cmd)
+		cfg, cfgPath, err := loadConfigWithPath(cmd)
 		if err != nil {
 			return err
 		}
 
-		wsDir, err := filepath.Abs(cfg.Workspace)
-		if err != nil {
-			return err
+		if syncWork != "" && len(args) > 0 {
+			return fmt.Errorf("cannot combine --work with explicit repo args")
+		}
+
+		// If --work is provided, scope sync to those repos and override branch where specified.
+		repoArgs := args
+		if syncWork != "" {
+			root := filepath.Dir(cfgPath)
+			workPath, err := work.SafeFilePath(root, syncWork)
+			if err != nil {
+				return err
+			}
+			wf, err := work.Load(workPath)
+			if err != nil {
+				return err
+			}
+			allowed := map[string]string{} // repo -> branch override (may be empty)
+			for _, r := range wf.Repos {
+				allowed[r.Name] = r.Branch
+			}
+
+			// Copy & filter config to avoid mutating shared state.
+			cfgCopy := *cfg
+			cfgCopy.Repositories = make([]config.Repository, 0, len(allowed))
+			known := map[string]struct{}{}
+			for _, r := range cfg.Repositories {
+				known[r.Name] = struct{}{}
+				if b, ok := allowed[r.Name]; ok {
+					r.Branch = b // may be empty = do not checkout
+					cfgCopy.Repositories = append(cfgCopy.Repositories, r)
+				}
+			}
+			var unknown []string
+			for name := range allowed {
+				if _, ok := known[name]; !ok {
+					unknown = append(unknown, name)
+				}
+			}
+			if len(unknown) > 0 {
+				return fmt.Errorf("work plan contains unknown repos: %s", strings.Join(unknown, ", "))
+			}
+			cfg = &cfgCopy
+			repoArgs = nil // operate on all repos in cfgCopy (already filtered)
 		}
 
 		if syncApply {
@@ -63,7 +107,7 @@ Examples:
 			fmt.Printf("Previewing workspace sync (no changes will be made).\n")
 		}
 
-		ws := workspace.New(filepath.Dir(wsDir), cfg)
+		ws := workspace.New(filepath.Dir(cfgPath), cfg)
 		isTTY, err := isInteractiveTTY()
 		if err != nil {
 			return err
@@ -78,6 +122,7 @@ Examples:
 			DryRun: !syncApply,
 
 			AllowDirty: syncDirty,
+			CreateBranchIfMissing: syncCreateBranchIfMissing,
 		}
 		if isTTY && !opts.AllowDirty {
 			opts.ConfirmDirty = func(repo config.Repository, reason string) (bool, error) {
@@ -109,14 +154,14 @@ Examples:
 			}
 		}
 
-		result, err := ws.Sync(args, opts)
+		result, err := ws.Sync(repoArgs, opts)
 		if err != nil {
 			return fmt.Errorf("syncing workspace: %w", err)
 		}
 
 		if opts.DryRun {
 			fmt.Printf("\nPreview done: %d repo(s)\n", result.Skipped)
-			fmt.Printf("To execute: xr repo sync --apply\n")
+			fmt.Printf("To execute: rerun the same command with --apply\n")
 			if result.Failed > 0 {
 				fmt.Printf("Preview failures: %d\n", result.Failed)
 			}
@@ -134,4 +179,6 @@ func init() {
 	syncCmd.Flags().BoolVar(&syncSubmod, "submodules", false, "update submodules recursively after sync")
 	syncCmd.Flags().BoolVar(&syncApply, "apply", false, "apply changes (default: preview only)")
 	syncCmd.Flags().BoolVar(&syncDirty, "allow-dirty", false, "allow syncing repos with uncommitted changes without prompting")
+	syncCmd.Flags().StringVar(&syncWork, "work", "", "scope sync to work plan name (from .xr/work/<name>.yaml)")
+	syncCmd.Flags().BoolVar(&syncCreateBranchIfMissing, "create-branch-if-missing", false, "create local branch when missing (from current HEAD)")
 }
