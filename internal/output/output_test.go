@@ -172,6 +172,26 @@ func TestPrintMatch_ContextLine(t *testing.T) {
 	}
 }
 
+func TestPrintStep_Format(t *testing.T) {
+	out := captureStdout(t, func() {
+		PrintStep("creating symlink foo -> /path")
+	})
+
+	if out != "  creating symlink foo -> /path\n" {
+		t.Errorf("PrintStep output = %q, want %q", out, "  creating symlink foo -> /path\n")
+	}
+}
+
+func TestPrintStepWarning_Format(t *testing.T) {
+	out := captureStdout(t, func() {
+		PrintStepWarning("repo-a: missing remote")
+	})
+
+	if out != "  warning: repo-a: missing remote\n" {
+		t.Errorf("PrintStepWarning output = %q, want %q", out, "  warning: repo-a: missing remote\n")
+	}
+}
+
 func TestPrintMatchSimple_MatchLine(t *testing.T) {
 	out := captureStdout(t, func() {
 		PrintMatchSimple("repo-b", "lib.go", 7, "  func helper()  ", false)
