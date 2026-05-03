@@ -101,6 +101,16 @@ func PrintWarning(msg string) {
 	fmt.Printf("%swarning: %s%s\n", c(colorYellow), msg, c(colorReset))
 }
 
+// PrintStep prints a progress message indented for nested operation logs.
+func PrintStep(msg string) {
+	fmt.Printf("  %s\n", msg)
+}
+
+// PrintStepWarning prints an indented warning line in nested operation logs.
+func PrintStepWarning(msg string) {
+	fmt.Printf("  warning: %s\n", msg)
+}
+
 func PrintError(msg string) {
 	fmt.Printf("%serror: %s%s\n", c(colorRed), msg, c(colorReset))
 }
