@@ -491,12 +491,17 @@ func gitCurrentBranch(dir string) string {
 }
 
 // SyncOptions configures behavior of Sync.
+//
+// Pull / Fetch / Prune / Submod are tri-state pointers: nil means "not set by
+// the caller", and the effective value falls back to per-repo and then
+// workspace-global settings from repos.yaml. Resolution order is
+// CLI(opts) > Repository.Sync > Config.Sync > false.
 type SyncOptions struct {
-	Pull   bool // pull latest changes after switching branch
-	Fetch  bool // fetch from remote before switching branch
-	Prune  bool // prune deleted remote branches during fetch
-	Submod bool // update submodules recursively
-	DryRun bool // show what would be done, perform no actions
+	Pull   *bool // pull latest changes after switching branch
+	Fetch  *bool // fetch from remote before switching branch
+	Prune  *bool // prune deleted remote branches during fetch
+	Submod *bool // update submodules recursively
+	DryRun bool  // show what would be done, perform no actions
 
 	// CreateBranchIfMissing creates a local branch when checkout fails and the
 	// remote tracking branch is also unavailable. The branch is created from the
@@ -516,6 +521,82 @@ type SyncOptions struct {
 	// ConfirmCheckout is an optional callback used to confirm switching branches.
 	// Return true to proceed with checkout, false to skip the repo.
 	ConfirmCheckout func(repo config.Repository, fromBranch, toBranch string) (bool, error)
+}
+
+// resolvedSyncFlags is the per-repository realisation of the tri-state flags
+// after applying CLI > repo > global > default precedence.
+type resolvedSyncFlags struct {
+	Pull   bool
+	Fetch  bool
+	Prune  bool
+	Submod bool
+}
+
+func resolveBool(cli, repo, global *bool) bool {
+	switch {
+	case cli != nil:
+		return *cli
+	case repo != nil:
+		return *repo
+	case global != nil:
+		return *global
+	}
+	return false
+}
+
+func resolveSyncFlags(repo config.Repository, global *config.SyncSettings, opts SyncOptions) resolvedSyncFlags {
+	var r *config.SyncSettings
+	if repo.Sync != nil {
+		r = repo.Sync
+	}
+	g := global
+	pick := func(cli *bool, get func(*config.SyncSettings) *bool) bool {
+		var rp, gp *bool
+		if r != nil {
+			rp = get(r)
+		}
+		if g != nil {
+			gp = get(g)
+		}
+		return resolveBool(cli, rp, gp)
+	}
+	return resolvedSyncFlags{
+		Pull:   pick(opts.Pull, func(s *config.SyncSettings) *bool { return s.Pull }),
+		Fetch:  pick(opts.Fetch, func(s *config.SyncSettings) *bool { return s.Fetch }),
+		Prune:  pick(opts.Prune, func(s *config.SyncSettings) *bool { return s.Prune }),
+		Submod: pick(opts.Submod, func(s *config.SyncSettings) *bool { return s.Submodules }),
+	}
+}
+
+// withResolved returns a copy of opts where the tri-state flags (Pull / Fetch /
+// Prune / Submod) are replaced with concrete pointers reflecting the effective
+// value for the given repository. This lets downstream sync helpers continue to
+// dereference the pointers without re-resolving precedence.
+func (opts SyncOptions) withResolved(flags resolvedSyncFlags) SyncOptions {
+	pull, fetch, prune, submod := flags.Pull, flags.Fetch, flags.Prune, flags.Submod
+	opts.Pull = &pull
+	opts.Fetch = &fetch
+	opts.Prune = &prune
+	opts.Submod = &submod
+	return opts
+}
+
+// effective reports the concrete sync flag values currently encoded in opts.
+// It expects withResolved to have populated the pointers; missing pointers are
+// treated as false so downstream code can call this safely.
+func (opts SyncOptions) effective() resolvedSyncFlags {
+	deref := func(p *bool) bool {
+		if p == nil {
+			return false
+		}
+		return *p
+	}
+	return resolvedSyncFlags{
+		Pull:   deref(opts.Pull),
+		Fetch:  deref(opts.Fetch),
+		Prune:  deref(opts.Prune),
+		Submod: deref(opts.Submod),
+	}
 }
 
 // SyncResult holds the outcome of a Sync operation.
@@ -538,15 +619,16 @@ func (w *Workspace) Sync(repoNames []string, opts SyncOptions) (*SyncResult, err
 		}
 
 		destPath := filepath.Join(wsDir, repo.Path)
+		effOpts := opts.withResolved(resolveSyncFlags(repo, w.Config.Sync, opts))
 		var err error
 		var skipped bool
 		switch {
 		case repo.IsSymlink():
-			skipped, err = w.syncSymlink(repo, destPath, opts)
+			skipped, err = w.syncSymlink(repo, destPath, effOpts)
 		case repo.IsClone():
-			skipped, err = w.syncClone(repo, destPath, opts)
+			skipped, err = w.syncClone(repo, destPath, effOpts)
 		default:
-			skipped, err = w.syncSubmodule(repo, destPath, opts)
+			skipped, err = w.syncSubmodule(repo, destPath, effOpts)
 		}
 		if err != nil {
 			output.PrintSyncFail(fmt.Sprintf("%v", err))
@@ -585,8 +667,10 @@ func (w *Workspace) syncSymlink(repo config.Repository, destPath string, opts Sy
 		return true, nil
 	}
 
+	flags := opts.effective()
+
 	// No branch configured — nothing to sync
-	if repo.Branch == "" && !opts.Fetch && !opts.Pull {
+	if repo.Branch == "" && !flags.Fetch && !flags.Pull {
 		output.PrintSyncSkip("no branch configured")
 		return true, nil
 	}
@@ -613,7 +697,7 @@ func (w *Workspace) syncClone(repo config.Repository, destPath string, opts Sync
 	}
 
 	// Update submodules within the clone
-	if opts.Submod {
+	if opts.effective().Submod {
 		if opts.DryRun {
 			if hasSubmodules(destPath) {
 				output.PrintSyncAction("preview: would update submodules")
@@ -670,6 +754,7 @@ func (w *Workspace) syncSubmodule(repo config.Repository, destPath string, opts 
 
 // syncGitRepo performs fetch, checkout, and pull on a git repository directory.
 func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOptions) (bool, error) {
+	flags := opts.effective()
 	currentBranch := gitCurrentBranch(dir)
 	dirty, err := gitIsDirty(dir)
 	if err != nil {
@@ -677,7 +762,7 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 	}
 
 	needsCheckout := repo.Branch != "" && currentBranch != repo.Branch
-	needsPull := opts.Pull
+	needsPull := flags.Pull
 
 	if needsCheckout && opts.ConfirmCheckout != nil && !opts.DryRun {
 		ok, err := opts.ConfirmCheckout(repo, currentBranch, repo.Branch)
@@ -716,8 +801,8 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 	}
 
 	if opts.DryRun {
-		if opts.Fetch {
-			if opts.Prune {
+		if flags.Fetch {
+			if flags.Prune {
 				output.PrintSyncAction("preview: would fetch origin --prune")
 			} else {
 				output.PrintSyncAction("preview: would fetch origin")
@@ -726,7 +811,7 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 		if needsCheckout {
 			output.PrintSyncAction(fmt.Sprintf("preview: would checkout %s", repo.Branch))
 		}
-		if opts.Pull {
+		if flags.Pull {
 			branch := repo.Branch
 			if branch == "" {
 				branch = currentBranch
@@ -742,9 +827,9 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 	}
 
 	// Fetch from remote
-	if opts.Fetch {
+	if flags.Fetch {
 		args := []string{"fetch", "origin"}
-		if opts.Prune {
+		if flags.Prune {
 			args = append(args, "--prune")
 		}
 		output.PrintSyncAction("fetching from origin")
@@ -755,7 +840,7 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 
 	// Switch to configured branch if specified
 	if repo.Branch != "" {
-		if opts.CreateBranchIfMissing && !opts.Fetch {
+		if opts.CreateBranchIfMissing && !flags.Fetch {
 			return false, fmt.Errorf("create-branch-if-missing requires fetch")
 		}
 		if currentBranch == repo.Branch {
@@ -791,7 +876,7 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 	}
 
 	// Pull latest changes
-	if opts.Pull {
+	if flags.Pull {
 		branch := repo.Branch
 		if branch == "" {
 			branch = gitCurrentBranch(dir)

@@ -555,14 +555,107 @@ func TestHasSubmodules(t *testing.T) {
 	}
 }
 
-func TestSyncOptions(t *testing.T) {
-	opts := SyncOptions{
-		Pull:   true,
-		Fetch:  true,
-		Prune:  true,
-		Submod: true,
+func TestResolveSyncFlags_Precedence(t *testing.T) {
+	tru, fls := true, false
+	mkSync := func(fetch, pull, prune, submod *bool) *config.SyncSettings {
+		return &config.SyncSettings{Fetch: fetch, Pull: pull, Prune: prune, Submodules: submod}
 	}
-	if !opts.Pull || !opts.Fetch || !opts.Prune || !opts.Submod {
+
+	tests := []struct {
+		name   string
+		repo   config.Repository
+		global *config.SyncSettings
+		opts   SyncOptions
+		want   resolvedSyncFlags
+	}{
+		{
+			name:   "defaults_to_false",
+			repo:   config.Repository{Name: "a"},
+			global: nil,
+			opts:   SyncOptions{},
+			want:   resolvedSyncFlags{},
+		},
+		{
+			name:   "global_only",
+			repo:   config.Repository{Name: "a"},
+			global: mkSync(&tru, &tru, nil, nil),
+			opts:   SyncOptions{},
+			want:   resolvedSyncFlags{Fetch: true, Pull: true},
+		},
+		{
+			name:   "repo_overrides_global",
+			repo:   config.Repository{Name: "a", Sync: mkSync(nil, &fls, nil, nil)},
+			global: mkSync(&tru, &tru, nil, nil),
+			opts:   SyncOptions{},
+			want:   resolvedSyncFlags{Fetch: true, Pull: false},
+		},
+		{
+			name:   "cli_overrides_repo_and_global",
+			repo:   config.Repository{Name: "a", Sync: mkSync(nil, &fls, nil, nil)},
+			global: mkSync(&tru, &tru, nil, nil),
+			opts:   SyncOptions{Pull: &tru},
+			want:   resolvedSyncFlags{Fetch: true, Pull: true},
+		},
+		{
+			name:   "cli_false_overrides_global_true",
+			repo:   config.Repository{Name: "a"},
+			global: mkSync(&tru, &tru, &tru, &tru),
+			opts:   SyncOptions{Fetch: &fls},
+			want:   resolvedSyncFlags{Fetch: false, Pull: true, Prune: true, Submod: true},
+		},
+		{
+			name:   "repo_independent_of_global",
+			repo:   config.Repository{Name: "a", Sync: mkSync(&tru, nil, nil, &tru)},
+			global: nil,
+			opts:   SyncOptions{},
+			want:   resolvedSyncFlags{Fetch: true, Submod: true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveSyncFlags(tt.repo, tt.global, tt.opts)
+			if got != tt.want {
+				t.Errorf("resolveSyncFlags() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWithResolved_PopulatesPointers(t *testing.T) {
+	opts := SyncOptions{}
+	flags := resolvedSyncFlags{Fetch: true, Pull: false, Prune: true, Submod: false}
+	got := opts.withResolved(flags)
+	if got.Fetch == nil || !*got.Fetch {
+		t.Errorf("Fetch = %v, want true", got.Fetch)
+	}
+	if got.Pull == nil || *got.Pull {
+		t.Errorf("Pull = %v, want false", got.Pull)
+	}
+	if got.Prune == nil || !*got.Prune {
+		t.Errorf("Prune = %v, want true", got.Prune)
+	}
+	if got.Submod == nil || *got.Submod {
+		t.Errorf("Submod = %v, want false", got.Submod)
+	}
+	// effective() should mirror the input flags.
+	if eff := got.effective(); eff != flags {
+		t.Errorf("effective() = %+v, want %+v", eff, flags)
+	}
+}
+
+func TestSyncOptions(t *testing.T) {
+	tru := true
+	opts := SyncOptions{
+		Pull:   &tru,
+		Fetch:  &tru,
+		Prune:  &tru,
+		Submod: &tru,
+	}
+	if opts.Pull == nil || !*opts.Pull ||
+		opts.Fetch == nil || !*opts.Fetch ||
+		opts.Prune == nil || !*opts.Prune ||
+		opts.Submod == nil || !*opts.Submod {
 		t.Error("SyncOptions fields should be set correctly")
 	}
 }

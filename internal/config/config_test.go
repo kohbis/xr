@@ -293,6 +293,101 @@ func TestReload_DefaultsPathToName(t *testing.T) {
 	}
 }
 
+func TestLoad_SyncSettings(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "repos.yaml")
+	content := `workspace: ./repos
+sync:
+  fetch: true
+  pull: true
+repositories:
+  - name: a
+    source: git@github.com:u/a.git
+    sync:
+      pull: false
+      submodules: true
+  - name: b
+    source: git@github.com:u/b.git
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Sync == nil {
+		t.Fatal("Config.Sync is nil, want non-nil")
+	}
+	if cfg.Sync.Fetch == nil || !*cfg.Sync.Fetch {
+		t.Errorf("global Fetch = %v, want true", cfg.Sync.Fetch)
+	}
+	if cfg.Sync.Pull == nil || !*cfg.Sync.Pull {
+		t.Errorf("global Pull = %v, want true", cfg.Sync.Pull)
+	}
+	if cfg.Sync.Prune != nil {
+		t.Errorf("global Prune = %v, want nil", *cfg.Sync.Prune)
+	}
+
+	a := cfg.Repositories[0]
+	if a.Sync == nil {
+		t.Fatal("repo[a].Sync is nil, want non-nil")
+	}
+	if a.Sync.Pull == nil || *a.Sync.Pull {
+		t.Errorf("repo[a].Pull = %v, want false (explicit)", a.Sync.Pull)
+	}
+	if a.Sync.Submodules == nil || !*a.Sync.Submodules {
+		t.Errorf("repo[a].Submodules = %v, want true", a.Sync.Submodules)
+	}
+	if a.Sync.Fetch != nil {
+		t.Errorf("repo[a].Fetch = %v, want nil (unset)", *a.Sync.Fetch)
+	}
+
+	if cfg.Repositories[1].Sync != nil {
+		t.Errorf("repo[b].Sync = %+v, want nil", cfg.Repositories[1].Sync)
+	}
+}
+
+func TestSaveAndLoadRoundtrip_SyncSettings(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "repos.yaml")
+
+	tru, fls := true, false
+	original := &Config{
+		Workspace: "./ws",
+		Sync: &SyncSettings{
+			Fetch: &tru,
+			Pull:  &tru,
+		},
+		Repositories: []Repository{
+			{
+				Name: "a", Source: "git@github.com:u/a.git", Path: "a", Type: RepoTypeGit,
+				Sync: &SyncSettings{Pull: &fls},
+			},
+			{Name: "b", Source: "git@github.com:u/b.git", Path: "b", Type: RepoTypeGit},
+		},
+	}
+
+	if err := Save(cfgPath, original); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	loaded, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if loaded.Sync == nil || loaded.Sync.Fetch == nil || !*loaded.Sync.Fetch {
+		t.Errorf("roundtrip global Fetch lost: %+v", loaded.Sync)
+	}
+	if loaded.Repositories[0].Sync == nil || loaded.Repositories[0].Sync.Pull == nil || *loaded.Repositories[0].Sync.Pull {
+		t.Errorf("roundtrip repo[a].Pull lost: %+v", loaded.Repositories[0].Sync)
+	}
+	if loaded.Repositories[1].Sync != nil {
+		t.Errorf("roundtrip repo[b].Sync should remain nil, got %+v", loaded.Repositories[1].Sync)
+	}
+}
+
 func TestReload_RejectsUnknownType(t *testing.T) {
 	cfg := &Config{
 		Workspace: "./repos",

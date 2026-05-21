@@ -75,6 +75,34 @@ xr repo import --non-interactive --yes  # apply import without prompts
 - Switch symlink repos to their configured branch: `xr repo sync` (requires `branch` in config)
 - Bootstrap a config from an existing workspace on disk: `xr repo import --dry-run`
 
+**Configuring sync defaults in `repos.yaml`:**
+
+The `fetch`, `pull`, `prune`, and `submodules` flags can be set as defaults in
+`repos.yaml` so agents do not have to repeat them on every invocation. A
+top-level `sync:` block defines the workspace-wide default; an optional
+`sync:` block on a single repository overrides it. Resolution order is
+**CLI flag > repository `sync` > top-level `sync` > false**.
+
+```yaml
+sync:                # workspace-wide defaults
+  fetch: true
+  pull: true
+
+repositories:
+  - name: project-a
+    source: git@github.com:user/project-a.git
+    branch: main
+  - name: project-b
+    source: git@github.com:user/project-b.git
+    branch: develop
+    sync:            # per-repo override
+      pull: false    # skip pull for this repo only
+```
+
+With the example above, `xr repo sync --apply` will fetch+pull `project-a`
+but only fetch `project-b`. Passing `--pull=false` on the CLI suppresses pull
+for both.
+
 ---
 
 ### Cross-repository search (`xr search`)

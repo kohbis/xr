@@ -1,5 +1,14 @@
 workspace: ./repos           # directory where repos will be placed
 
+# Default behavior for `xr repo sync`. Each field is optional. CLI flags on the
+# sync command override these, and a per-repository `sync:` block (see below)
+# overrides this global section.
+sync:
+  fetch: true
+  pull: true
+  prune: false
+  submodules: false
+
 repositories:
   - name: project-a
     source: git@github.com:user/project-a.git
@@ -10,6 +19,8 @@ repositories:
     source: git@github.com:user/project-b.git
     branch: develop
     path: project-b
+    sync:                    # per-repo override: don't pull this repo
+      pull: false
 
   - name: local-lib
     source: /path/to/local-lib  # local path -> symlink

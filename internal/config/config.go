@@ -15,17 +15,29 @@ const (
 	RepoTypeClone   RepoType = "clone"
 )
 
+// SyncSettings holds default flags for `xr repo sync`. Each field is a tri-state
+// pointer: nil means "not configured here, fall back to a lower-priority source".
+// Resolution order is CLI > repository.Sync > Config.Sync > false.
+type SyncSettings struct {
+	Fetch      *bool `yaml:"fetch,omitempty"`
+	Pull       *bool `yaml:"pull,omitempty"`
+	Prune      *bool `yaml:"prune,omitempty"`
+	Submodules *bool `yaml:"submodules,omitempty"`
+}
+
 type Repository struct {
-	Name   string   `yaml:"name"`
-	Source string   `yaml:"source"`
-	Branch string   `yaml:"branch,omitempty"`
-	Path   string   `yaml:"path"`
-	Type   RepoType `yaml:"type,omitempty"`
+	Name   string        `yaml:"name"`
+	Source string        `yaml:"source"`
+	Branch string        `yaml:"branch,omitempty"`
+	Path   string        `yaml:"path"`
+	Type   RepoType      `yaml:"type,omitempty"`
+	Sync   *SyncSettings `yaml:"sync,omitempty"`
 }
 
 type Config struct {
-	Workspace    string       `yaml:"workspace"`
-	Repositories []Repository `yaml:"repositories"`
+	Workspace    string        `yaml:"workspace"`
+	Sync         *SyncSettings `yaml:"sync,omitempty"`
+	Repositories []Repository  `yaml:"repositories"`
 }
 
 func Load(path string) (*Config, error) {

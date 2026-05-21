@@ -119,6 +119,28 @@ Repository types:
 
 Type inference in `normalize()`: local paths (starting with `/` or `~`) default to `symlink`; otherwise `git`.
 
+#### Sync settings
+
+`Config.Sync` (top-level) and `Repository.Sync` (per-repo) hold a
+`*SyncSettings` whose fields are `*bool` for `fetch` / `pull` / `prune` /
+`submodules`. A nil pointer means "not configured at this layer".
+
+`cmd/repo/sync.go` builds `workspace.SyncOptions` with `*bool` flags via the
+`optBool(cmd, name, value)` helper, which only returns a non-nil pointer when
+the CLI flag was explicitly set (`cmd.Flags().Changed(name)`).
+
+`workspace.Sync()` resolves the effective flags **per repository** via
+`resolveSyncFlags(repo, cfg.Sync, opts)` with the precedence
+**CLI > Repository.Sync > Config.Sync > false**, then forwards a copy of
+`SyncOptions` whose pointers are now concrete (`withResolved`) to
+`syncSymlink` / `syncClone` / `syncSubmodule` / `syncGitRepo`. Downstream
+helpers read flags through `opts.effective()` and treat them as plain bools.
+
+When adding a new sync-related option that should be configurable from
+`repos.yaml`, follow the same pattern: add a `*bool` field to `SyncSettings`,
+wire it through `resolveSyncFlags` / `withResolved` / `effective`, and add a
+matching CLI flag built with `optBool`.
+
 ### Output
 
 Use helpers from `internal/output` for consistent terminal formatting and machine-readable output. The package now provides:

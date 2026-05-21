@@ -115,10 +115,10 @@ Examples:
 
 		proceedAllDirty := false
 		opts := workspace.SyncOptions{
-			Pull:   syncPull,
-			Fetch:  syncFetch,
-			Prune:  syncPrune,
-			Submod: syncSubmod,
+			Pull:   optBool(cmd, "pull", syncPull),
+			Fetch:  optBool(cmd, "fetch", syncFetch),
+			Prune:  optBool(cmd, "prune", syncPrune),
+			Submod: optBool(cmd, "submodules", syncSubmod),
 			DryRun: !syncApply,
 
 			AllowDirty:            syncDirty,
@@ -170,6 +170,16 @@ Examples:
 		output.PrintSyncSummary(result.Synced, result.Skipped, result.Failed)
 		return nil
 	},
+}
+
+// optBool returns a pointer to v iff the named flag was explicitly set on cmd.
+// A nil return signals "fall back to repos.yaml (repo-level then global)" in
+// workspace.SyncOptions.
+func optBool(cmd *cobra.Command, name string, v bool) *bool {
+	if !cmd.Flags().Changed(name) {
+		return nil
+	}
+	return &v
 }
 
 func init() {
