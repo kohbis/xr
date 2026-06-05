@@ -67,7 +67,7 @@ var initCmd = &cobra.Command{
 		}
 		var outBuf bytes.Buffer
 		outBuf.WriteString("# Keep only repos you need.\n")
-		outBuf.WriteString("# To switch branches with `xr repo sync --work <name> --apply`, set `branch` per repo.\n\n")
+		outBuf.WriteString("# To switch branches with `xr repo sync --work <name>`, set `branch` per repo.\n\n")
 		outBuf.Write(buf.Bytes())
 		data := outBuf.Bytes()
 

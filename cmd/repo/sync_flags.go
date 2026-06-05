@@ -8,7 +8,7 @@ import (
 
 var (
 	syncPrune                 bool
-	syncApply                 bool
+	syncDryRun                bool
 	syncDirty                 bool
 	syncWork                  string
 	syncCreateBranchIfMissing bool
@@ -42,7 +42,7 @@ func RegisterSyncFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&syncUpdate, "update", false, "fetch and pull from remote before switching branch")
 	cmd.Flags().BoolVar(&syncSubmod, "submodules", false, "update submodules recursively after sync")
 	cmd.Flags().BoolVar(&syncPrune, "prune", false, "prune deleted remote branches during fetch (requires --update)")
-	cmd.Flags().BoolVar(&syncApply, "apply", false, "apply changes (default: preview only)")
+	cmd.Flags().BoolVar(&syncDryRun, "dry-run", false, "preview only, perform no git operations")
 	cmd.Flags().BoolVar(&syncDirty, "allow-dirty", false, "allow syncing repos with uncommitted changes without prompting")
 	cmd.Flags().StringVar(&syncWork, "work", "", "scope sync to work plan name (from .xr/work/<name>.yaml)")
 	cmd.Flags().BoolVar(&syncCreateBranchIfMissing, "create-branch-if-missing", false, "create local branch when missing (from current HEAD)")

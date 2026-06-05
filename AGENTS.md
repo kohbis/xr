@@ -142,7 +142,7 @@ Do not use `fmt.Println` directly for user-visible output in `internal/` package
 - No global `--non-interactive` or `--yes` flags today; several commands infer interactivity from stdin TTY.
 - `xr repo remove`: without a TTY, repo name(s) and `--force` are required.
 - `xr repo import`: `--dry-run` previews; applying still prompts on stdin.
-- `xr repo sync`: without a TTY, dirty/checkout prompts are skipped; use `--apply` to execute and `--allow-dirty` when appropriate.
+- `xr repo sync`: runs by default; without a TTY, dirty/checkout prompts are skipped; use `--allow-dirty` when appropriate; use `--dry-run` to preview.
 - `xr init`: interactive prompts only (not automation-friendly).
 
 ### JSON/report output conventions

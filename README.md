@@ -89,22 +89,22 @@ If you want the full surface area, see `xr --help` and `xr <cmd> --help`.
 
 | Goal | Command |
 |------|---------|
-| Match branches (preview) | `xr repo sync` |
-| Match branches (execute) | `xr repo sync --apply` |
-| Fetch remote + match branches | `xr repo sync --update --apply` |
-| Fetch, pull, and submodules | `xr repo sync --update --submodules --apply` |
-| Apply a work plan | `xr repo sync --work NAME` (add `--apply` to execute) |
-| Same as work plan sync | `xr work checkout NAME --apply` |
+| Match branches | `xr repo sync` |
+| Preview sync (no changes) | `xr repo sync --dry-run` |
+| Fetch remote + match branches | `xr repo sync --update` |
+| Fetch, pull, and submodules | `xr repo sync --update --submodules` |
+| Apply a work plan | `xr repo sync --work NAME` |
+| Same as work plan sync | `xr work checkout NAME` |
 | Search across repos | `xr search PATTERN` |
 | Compare a file across repos | `xr diff --file PATH` |
 | Another workspace config | `xr --config PATH repo list` |
 
 ### Preview vs execute
 
-Commands use different words for “dry run” vs “do it”:
+Preview without side effects uses `--dry-run` on both commands:
 
-- **`xr repo sync`**: preview by default; add `--apply` to run git operations.
-- **`xr repo import`**: lists discoveries, then asks for confirmation; use `--dry-run` to scan without writing.
+- **`xr repo sync`**: runs by default; add `--dry-run` to preview git operations.
+- **`xr repo import`**: prompts before writing; use `--dry-run` to scan without writing.
 
 ### Config path: `xr init` vs other commands
 
@@ -119,7 +119,7 @@ There is no `--non-interactive` flag today. Behavior depends on whether stdin is
 |---------|------------------------------|
 | `xr repo remove` | Pass repo name(s) and `--force` (required without a TTY) |
 | `xr repo import` | Use `--dry-run` to inspect; applying still prompts for `y/N` |
-| `xr repo sync` | Use `--apply` (often with `--update`); prompts for dirty/checkout are skipped without a TTY (use `--allow-dirty` when needed) |
+| `xr repo sync` | Runs by default (often with `--update`); prompts for dirty/checkout are skipped without a TTY (use `--allow-dirty` when needed) |
 | `xr init` | Interactive only (multiple prompts) |
 | Machine-readable output | `--json` on `xr repo list`, `xr search`, and `xr diff` modes (`--pattern`, `--file`, `--history`); `--no-color` globally |
 
@@ -147,11 +147,11 @@ Work plans live at `.xr/work/<name>.yaml`. Start from “all repos”, then dele
 xr work init example
 ${EDITOR:-vim} .xr/work/example.yaml
 
-# preview by default
-xr repo sync --work example
+# preview first
+xr repo sync --work example --dry-run
 
-# apply when ready
-xr repo sync --work example --apply
+# run when ready
+xr repo sync --work example
 ```
 
 ### 4) Find a pattern across repositories
