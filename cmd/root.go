@@ -10,8 +10,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var cfgFile string
-var noColor bool
+var (
+	cfgFile        string
+	noColor        bool
+	nonInteractive bool
+	yes            bool
+)
 
 var rootCmd = &cobra.Command{
 	Use:   "xr",
@@ -42,6 +46,8 @@ func SetVersion(v string) {
 func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: repos.yaml in current directory)")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable ANSI colors in output")
+	rootCmd.PersistentFlags().BoolVar(&nonInteractive, "non-interactive", false, "disable prompts; fail instead of waiting for input")
+	rootCmd.PersistentFlags().BoolVar(&yes, "yes", false, "confirm destructive or write actions without prompting")
 
 	rootCmd.AddGroup(
 		&cobra.Group{ID: "workspace", Title: "Workspace"},

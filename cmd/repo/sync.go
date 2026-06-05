@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/kohbis/xr/internal/config"
+	"github.com/kohbis/xr/internal/interactive"
 	"github.com/kohbis/xr/internal/output"
 	"github.com/kohbis/xr/internal/shellcomp"
 	"github.com/kohbis/xr/internal/work"
@@ -23,13 +24,14 @@ By default this command runs git operations. Use --dry-run to preview without ch
 Sync options:
   (none)           switch branches only
   --update         fetch and pull from remote
+  --prune          prune deleted remote branches during fetch (requires --update)
   --submodules     update submodules recursively (combine with --update for a full remote sync)
   --dry-run        preview only
 
 Always switches to the branch in repos.yaml (or work plan override with --work).
 
 Scope with --work <name> (from .xr/work/<name>.yaml) instead of repo args.
-Use --allow-dirty to proceed on dirty repos without prompting (recommended without a TTY).
+Use --allow-dirty to proceed on dirty repos without prompting (recommended with --non-interactive).
 
 Without arguments, syncs all repositories. Specify repo names to sync only those.
 
@@ -42,6 +44,9 @@ Examples:
 
   # Fetch, checkout, and pull
   xr repo sync --update
+
+  # Fetch with prune, checkout, and pull
+  xr repo sync --update --prune
 
   # Fetch, pull, and update submodules
   xr repo sync --update --submodules
@@ -117,7 +122,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	ws := workspace.New(filepath.Dir(cfgPath), cfg)
-	isTTY, err := isInteractiveTTY()
+	shouldPrompt, err := interactive.ShouldPrompt(cmd)
 	if err != nil {
 		return err
 	}
@@ -133,7 +138,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		AllowDirty:            syncDirty,
 		CreateBranchIfMissing: syncCreateBranchIfMissing,
 	}
-	if isTTY && !opts.AllowDirty {
+	if shouldPrompt && !opts.AllowDirty {
 		opts.ConfirmDirty = func(repo config.Repository, reason string) (bool, error) {
 			if proceedAllDirty {
 				return true, nil
@@ -155,7 +160,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
-	if isTTY && !syncDryRun {
+	if shouldPrompt && !syncDryRun {
 		opts.ConfirmCheckout = func(repo config.Repository, fromBranch, toBranch string) (bool, error) {
 			// If fromBranch is empty, it likely means a detached HEAD; still confirm.
 			label := fmt.Sprintf("%s: switch %q → %q", repo.Name, fromBranch, toBranch)

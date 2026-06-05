@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/kohbis/xr/internal/config"
+	"github.com/kohbis/xr/internal/interactive"
 	"github.com/kohbis/xr/internal/shellcomp"
 	"github.com/kohbis/xr/internal/workspace"
 	"github.com/spf13/cobra"
@@ -26,14 +27,15 @@ The removal method depends on the repository type:
 
 Use --config-only to remove only from repos.yaml without touching the filesystem.
 
-Without a TTY, repo name(s) are required and --force is required to skip confirmation.`,
+Without prompts, repo name(s) are required and --force or --yes is required to confirm removal.`,
 	Args:              cobra.MinimumNArgs(0),
 	ValidArgsFunction: shellcomp.CompleteRepoNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		isTTY, err := isInteractiveTTY()
+		shouldPrompt, err := interactive.ShouldPrompt(cmd)
 		if err != nil {
 			return err
 		}
+		confirmed := removeForce || interactive.Yes(cmd)
 
 		cfgPath := cmd.Root().PersistentFlags().Lookup("config").Value.String()
 		if cfgPath == "" {
@@ -51,7 +53,7 @@ Without a TTY, repo name(s) are required and --force is required to skip confirm
 		}
 
 		if len(args) == 0 {
-			if !isTTY {
+			if !shouldPrompt {
 				return fmt.Errorf("missing required value(s): repo name(s) (non-interactive)")
 			}
 			selected, err := promptRemoveTargetsInteractive(reposByName)
@@ -79,9 +81,9 @@ Without a TTY, repo name(s) are required and --force is required to skip confirm
 			fmt.Printf("  - %-20s %-8s %s\n", r.Name, string(r.Type), r.Path)
 		}
 
-		if !removeForce {
-			if !isTTY {
-				return fmt.Errorf("non-interactive remove requires --force")
+		if !confirmed {
+			if !shouldPrompt {
+				return fmt.Errorf("non-interactive remove requires --force or --yes")
 			}
 			ok, err := promptConfirmRemove()
 			if err != nil {

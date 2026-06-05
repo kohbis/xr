@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/kohbis/xr/internal/config"
+	"github.com/kohbis/xr/internal/interactive"
 	"github.com/kohbis/xr/internal/workspace"
 	"github.com/spf13/cobra"
 )
@@ -31,11 +32,10 @@ The repository type is inferred from the source unless --type is specified:
 If a repository with the same name or path already exists, an error is returned.`,
 	Args: cobra.RangeArgs(0, 1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		in, err := os.Stdin.Stat()
+		shouldPrompt, err := interactive.ShouldPrompt(cmd)
 		if err != nil {
 			return err
 		}
-		isTTY := (in.Mode() & os.ModeCharDevice) != 0
 
 		reader := bufio.NewReader(os.Stdin)
 		name := ""
@@ -44,7 +44,7 @@ If a repository with the same name or path already exists, an error is returned.
 		}
 
 		// Collect required values first; decide repo name last.
-		resolvedSource, err := resolveSource(addSource, isTTY, reader)
+		resolvedSource, err := resolveSource(addSource, shouldPrompt, reader)
 		if err != nil {
 			return err
 		}
@@ -55,30 +55,23 @@ If a repository with the same name or path already exists, an error is returned.
 		if strings.TrimSpace(name) == "" {
 			name = inferNameFromSource(addSource)
 			if strings.TrimSpace(name) == "" {
-				if !isTTY {
+				if !shouldPrompt {
 					return fmt.Errorf("missing required value(s): name (argument; could not infer from --source)")
 				}
 				name = promptRequired(reader, "Repository name", "")
 			}
 		}
 
-		// In non-interactive environments (no TTY), do not prompt (avoid hanging in CI).
-		// Keep defaults without prompting.
-		if !isTTY {
-			if strings.TrimSpace(addPath) == "" {
-				addPath = name
-			}
-		}
-
 		if strings.TrimSpace(addPath) == "" {
+			addPath = name
+		}
+		if strings.TrimSpace(addPath) == "" && shouldPrompt {
 			addPath = promptOptional(reader, "Path within workspace", name)
 		}
-		if strings.TrimSpace(addType) == "" {
-			if isTTY {
-				addType = promptRepoTypeInteractive(reader)
-			}
+		if strings.TrimSpace(addType) == "" && shouldPrompt {
+			addType = promptRepoTypeInteractive(reader)
 		}
-		if strings.TrimSpace(addBranch) == "" && isTTY {
+		if strings.TrimSpace(addBranch) == "" && shouldPrompt {
 			addBranch = promptOptional(reader, "Branch (optional)", "")
 		}
 
