@@ -4,14 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"text/tabwriter"
 
-	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/git"
 	"github.com/kohbis/xr/internal/output"
-	"github.com/kohbis/xr/internal/work"
 	"github.com/spf13/cobra"
-	"strings"
 )
 
 const (
@@ -19,7 +17,6 @@ const (
 )
 
 var listJSON bool
-var listWork string
 
 var listCmd = &cobra.Command{
 	Use:   "list",
@@ -36,47 +33,6 @@ var listCmd = &cobra.Command{
 		}
 
 		repos := cfg.Repositories
-		if listWork != "" {
-			root := filepath.Dir(cfgPath)
-			workPath, err := work.SafeFilePath(root, listWork)
-			if err != nil {
-				return err
-			}
-			wf, err := work.Load(workPath)
-			if err != nil {
-				return err
-			}
-			allowed := map[string]string{} // repo -> branch override (may be empty)
-			for _, repo := range wf.Repos {
-				allowed[repo.Name] = repo.Branch
-			}
-			var unknown []string
-			for name := range allowed {
-				found := false
-				for _, r := range repos {
-					if r.Name == name {
-						found = true
-						break
-					}
-				}
-				if !found {
-					unknown = append(unknown, name)
-				}
-			}
-			if len(unknown) > 0 {
-				return fmt.Errorf("work plan contains unknown repos: %s", strings.Join(unknown, ", "))
-			}
-			filtered := make([]config.Repository, 0, len(allowed))
-			for _, r := range repos {
-				if b, ok := allowed[r.Name]; ok {
-					if b != "" {
-						r.Branch = b
-					}
-					filtered = append(filtered, r)
-				}
-			}
-			repos = filtered
-		}
 
 		rows := make([]map[string]string, 0, len(repos))
 		result := output.CommandResult{
@@ -164,5 +120,4 @@ func formatSource(cfgPath, source string) string {
 func init() {
 	Cmd.AddCommand(listCmd)
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "output in JSON format")
-	listCmd.Flags().StringVar(&listWork, "work", "", "filter repositories by work plan name")
 }

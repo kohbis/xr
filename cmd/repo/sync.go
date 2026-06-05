@@ -3,13 +3,11 @@ package repo
 import (
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/interactive"
 	"github.com/kohbis/xr/internal/output"
 	"github.com/kohbis/xr/internal/shellcomp"
-	"github.com/kohbis/xr/internal/work"
 	"github.com/kohbis/xr/internal/workspace"
 	"github.com/spf13/cobra"
 )
@@ -28,9 +26,7 @@ Sync options:
   --submodules     update submodules recursively (combine with --update for a full remote sync)
   --dry-run        preview only
 
-Always switches to the branch in repos.yaml (or work plan override with --work).
-
-Scope with --work <name> (from .xr/work/<name>.yaml) instead of repo args.
+Always switches to the branch in repos.yaml.
 Use --allow-dirty to proceed on dirty repos without prompting (recommended with --non-interactive).
 
 Without arguments, syncs all repositories. Specify repo names to sync only those.
@@ -49,10 +45,7 @@ Examples:
   xr repo sync --update --prune
 
   # Fetch, pull, and update submodules
-  xr repo sync --update --submodules
-
-  # Apply a work plan
-  xr repo sync --work example`,
+  xr repo sync --update --submodules`,
 	ValidArgsFunction: shellcomp.CompleteRepoNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runSync(cmd, args)
@@ -68,51 +61,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 	cfg, cfgPath, err := loadConfigWithPath(cmd)
 	if err != nil {
 		return err
-	}
-
-	if syncWork != "" && len(args) > 0 {
-		return fmt.Errorf("cannot combine --work with explicit repo args")
-	}
-
-	// If --work is provided, scope sync to those repos and override branch where specified.
-	repoArgs := args
-	if syncWork != "" {
-		root := filepath.Dir(cfgPath)
-		workPath, err := work.SafeFilePath(root, syncWork)
-		if err != nil {
-			return err
-		}
-		wf, err := work.Load(workPath)
-		if err != nil {
-			return err
-		}
-		allowed := map[string]string{} // repo -> branch override (may be empty)
-		for _, r := range wf.Repos {
-			allowed[r.Name] = r.Branch
-		}
-
-		// Copy & filter config to avoid mutating shared state.
-		cfgCopy := *cfg
-		cfgCopy.Repositories = make([]config.Repository, 0, len(allowed))
-		known := map[string]struct{}{}
-		for _, r := range cfg.Repositories {
-			known[r.Name] = struct{}{}
-			if b, ok := allowed[r.Name]; ok {
-				r.Branch = b // may be empty = do not checkout
-				cfgCopy.Repositories = append(cfgCopy.Repositories, r)
-			}
-		}
-		var unknown []string
-		for name := range allowed {
-			if _, ok := known[name]; !ok {
-				unknown = append(unknown, name)
-			}
-		}
-		if len(unknown) > 0 {
-			return fmt.Errorf("work plan contains unknown repos: %s", strings.Join(unknown, ", "))
-		}
-		cfg = &cfgCopy
-		repoArgs = nil // operate on all repos in cfgCopy (already filtered)
 	}
 
 	if syncDryRun {
@@ -168,7 +116,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	result, err := ws.Sync(repoArgs, opts)
+	result, err := ws.Sync(args, opts)
 	if err != nil {
 		return fmt.Errorf("syncing workspace: %w", err)
 	}
@@ -186,5 +134,5 @@ func runSync(cmd *cobra.Command, args []string) error {
 }
 
 func init() {
-	RegisterSyncFlags(syncCmd)
+	registerSyncFlags(syncCmd)
 }
