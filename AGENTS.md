@@ -152,7 +152,7 @@ Prefer a consistent automation story across commands:
 - `--report <path>` for structured file output when the command produces aggregate results (for example, selected `xr diff` modes)
 - include per-repository status and summary counts when applicable
 
-**Current behavior:** `--json` is implemented on `xr repo list`, `xr search`, and `xr diff` (`--pattern`, `--file`, `--history`). `--report` is implemented on those `xr diff` modes only. `xr repo sync` does not yet expose `--json` or `--report` (planned for a later CLI cleanup phase).
+**Current behavior:** `--json` is implemented on `xr repo list`, `xr search`, and `xr diff file` / `pattern` / `history`. `--report` is implemented on those `xr diff` subcommands only. `xr repo sync` does not yet expose `--json` or `--report` (planned for a later CLI cleanup phase).
 
 ### Commit messages
 
@@ -199,6 +199,6 @@ Changelog excludes commits with types `docs`, `test`, and `chore`.
 ## External Runtime Dependencies
 
 `xr` shells out to external tools at runtime:
-- `git` — required for `xr init`, `xr repo sync`, `xr repo import`, `xr diff`, `xr diff --history`
-- `diff` — required for `xr diff --file` (pre-installed on most systems)
+- `git` — required for `xr init`, `xr repo sync`, `xr repo import`, `xr diff`, `xr diff history`
+- `diff` — required for `xr diff file` (pre-installed on most systems)
 - `rg` (ripgrep) — optional for `xr search`; falls back to built-in implementation if absent
