@@ -31,7 +31,8 @@ Type is auto-inferred: local paths (`/…` or `~…`) → `symlink`; remote URLs
 |------|---------|
 | Match branches (preview) | `xr repo sync` |
 | Match branches (execute) | `xr repo sync --apply` |
-| Fetch remote + match branches | `xr repo sync --fetch --pull --apply` |
+| Fetch remote + match branches | `xr repo sync --update --apply` |
+| Fetch, pull, and submodules | `xr repo sync --update --submodules --apply` |
 | Apply a work plan | `xr repo sync --work NAME` (add `--apply` to execute) |
 | Same via work alias | `xr work checkout NAME --apply` |
 | Search across repos | `xr search PATTERN` |
@@ -72,13 +73,13 @@ xr repo remove <name> --config-only     # remove from config only, keep files
 xr repo sync                            # preview branch sync (repos.yaml or work plan)
 xr repo sync --apply                    # execute branch sync
 xr repo sync <name> [<name>...]         # sync specific repos only
-xr repo sync --fetch --pull --apply     # fetch, switch branch, and pull latest
-xr repo sync --fetch --prune --pull --apply  # fetch with prune, switch, and pull
-xr repo sync --submodules --apply       # also update submodules recursively
+xr repo sync --update --apply           # fetch, switch branch, and pull latest
+xr repo sync --update --submodules --apply  # fetch, pull, and update submodules
+xr repo sync --update --prune --apply   # fetch with prune, switch, and pull
 xr repo sync --work <name>              # scope sync to repos listed in .xr/work/<name>.yaml
 xr repo sync --work <name> --apply      # execute work-plan sync
 xr repo sync --allow-dirty --apply      # skip dirty-repo prompts (or required without TTY)
-xr repo sync --create-branch-if-missing --fetch --apply  # create local branch if missing (requires --fetch)
+xr repo sync --create-branch-if-missing --update --apply  # create local branch if missing (requires --update)
 xr repo import                          # discover repos in workspace dir and add to repos.yaml
 xr repo import --dry-run                # preview discovered repos without writing
 ```
@@ -86,9 +87,9 @@ xr repo import --dry-run                # preview discovered repos without writi
 **Agent use cases:**
 - Enumerate the workspace before operating: `xr repo list`
 - Add a newly created repo to the workspace: `xr repo add`
-- Keep submodules in sync after upstream changes: `xr repo sync --submodules --apply`
+- Keep submodules in sync after upstream changes: `xr repo sync --update --submodules --apply`
 - Ensure all repos are on their configured branches: `xr repo sync --apply`
-- Bring all repos up to date with remote: `xr repo sync --fetch --pull --apply`
+- Bring all repos up to date with remote: `xr repo sync --update --apply`
 - Switch symlink repos to their configured branch: `xr repo sync --apply` (requires `branch` in config)
 - Bootstrap a config from an existing workspace on disk: `xr repo import --dry-run`
 
@@ -180,13 +181,13 @@ Useful when operating on multiple independent workspaces from the same working d
 
 Work plans are YAML files stored under `.xr/work/<name>.yaml`. They scope multi-repo operations and can optionally override per-repo `branch` targets (used by `xr repo sync --work <name>`).
 
-`xr work checkout <name>` is an alias for `xr repo sync --work <name>` and accepts the same sync flags (`--apply`, `--fetch`, `--pull`, etc.).
+`xr work checkout <name>` is an alias for `xr repo sync --work <name>` and accepts the same sync flags (`--apply`, `--update`, `--submodules`, etc.).
 
 ```sh
 xr work init <name>          # create a work plan from repos.yaml (repo names only)
 xr work list                 # list available work plan names
 xr work checkout <name>      # same as: xr repo sync --work <name>
-xr work checkout <name> --apply --fetch --pull
+xr work checkout <name> --apply --update --submodules
 xr work delete <name> --yes  # delete the work plan file
 ```
 
