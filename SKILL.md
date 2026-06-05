@@ -32,14 +32,16 @@ Type is auto-inferred: local paths (`/…` or `~…`) → `symlink`; remote URLs
 | Match branches | `xr repo sync` |
 | Preview sync (no changes) | `xr repo sync --dry-run` |
 | Fetch remote + match branches | `xr repo sync --update` |
+| Fetch with prune stale refs | `xr repo sync --update --prune` |
 | Fetch, pull, and submodules | `xr repo sync --update --submodules` |
 | Apply a work plan | `xr repo sync --work NAME` |
+| Import discoveries without prompt | `xr repo import --yes` |
 | Same via work alias | `xr work checkout NAME` |
 | Search across repos | `xr search PATTERN` |
 | Compare a file across repos | `xr diff file PATH` |
 | Another workspace config | `xr --config PATH repo list` |
 
-**Preview vs execute:** `xr repo sync` runs by default; use `--dry-run` to preview. `xr repo import` prompts before writing; use `--dry-run` to scan only.
+**Preview vs execute:** `xr repo sync` runs by default; use `--dry-run` to preview. `xr repo import` prompts before writing; use `--yes` to apply unattended or `--dry-run` to scan only.
 
 **Config paths:** most commands use global `--config`. `xr init` uses `-f` / `--file` for the repos.yaml path during setup (not `--config`).
 
@@ -77,9 +79,10 @@ xr repo sync --update                   # fetch, switch branch, and pull latest
 xr repo sync --update --submodules      # fetch, pull, and update submodules
 xr repo sync --update --prune           # fetch with prune, switch, and pull
 xr repo sync --work <name>              # scope sync to repos listed in .xr/work/<name>.yaml
-xr repo sync --allow-dirty              # skip dirty-repo prompts (or required without TTY)
+xr repo sync --allow-dirty              # skip dirty-repo prompts (recommended with --non-interactive)
 xr repo sync --create-branch-if-missing --update  # create local branch if missing (requires --update)
 xr repo import                          # discover repos in workspace dir and add to repos.yaml
+xr repo import --yes                    # apply discoveries without prompting
 xr repo import --dry-run                # preview discovered repos without writing
 ```
 
@@ -213,16 +216,19 @@ repos:
 
 ---
 
-## Agent automation (current behavior)
+## Agent automation
 
-There is no `--non-interactive` flag. When stdin is **not** a TTY:
+Global flags:
 
-| Command | Behavior |
-|---------|----------|
-| `xr repo remove` | Requires repo name(s) and `--force` |
-| `xr repo import` | `--dry-run` is safe; applying still reads stdin for `y/N` (can block) |
-| `xr repo sync` | Runs by default; no dirty/checkout prompts without TTY; use `--allow-dirty` if needed |
-| `xr init` | Not suitable for unattended use |
+- `--non-interactive` — disable prompts; commands return errors instead of blocking on stdin.
+- `--yes` — confirm writes or destructive actions (for example `xr repo import --yes`, `xr repo remove NAME --yes`).
+
+| Command | Unattended pattern |
+|---------|-------------------|
+| `xr repo remove` | `xr repo remove NAME --yes` (or `--force`) |
+| `xr repo import` | `xr repo import --yes` to apply; `--dry-run` to inspect only |
+| `xr repo sync` | Runs by default; add `--allow-dirty` when dirty repos should proceed without prompts |
+| `xr init` | Interactive only; `--non-interactive` returns an error |
 
 Tips:
 

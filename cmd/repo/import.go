@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/kohbis/xr/internal/config"
+	"github.com/kohbis/xr/internal/interactive"
 	"github.com/kohbis/xr/internal/workspace"
 	"github.com/spf13/cobra"
 )
@@ -23,7 +24,8 @@ var importCmd = &cobra.Command{
 Lists newly discovered repos, then prompts for confirmation before writing repos.yaml.
 Use --dry-run to scan and print discoveries without writing or prompting.
 
-Without a TTY, applying still reads stdin for y/N and may block; use --dry-run in automation.`,
+For automation, use --yes to apply without prompting, or --non-interactive to fail
+instead of waiting for input (requires --yes to write).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfgPath := cmd.Root().PersistentFlags().Lookup("config").Value.String()
 		if cfgPath == "" {
@@ -76,13 +78,25 @@ Without a TTY, applying still reads stdin for y/N and may block; use --dry-run i
 			return nil
 		}
 
-		fmt.Print("\nAdd these to repos.yaml? [y/N]: ")
-		reader := bufio.NewReader(os.Stdin)
-		answer, _ := reader.ReadString('\n')
-		answer = strings.TrimSpace(strings.ToLower(answer))
-		if answer != "y" {
-			fmt.Println("Aborted.")
-			return nil
+		if interactive.Yes(cmd) {
+			// apply without prompting
+		} else {
+			shouldPrompt, err := interactive.ShouldPrompt(cmd)
+			if err != nil {
+				return err
+			}
+			if !shouldPrompt {
+				return fmt.Errorf("non-interactive import requires --yes (or use --dry-run)")
+			}
+
+			fmt.Print("\nAdd these to repos.yaml? [y/N]: ")
+			reader := bufio.NewReader(os.Stdin)
+			answer, _ := reader.ReadString('\n')
+			answer = strings.TrimSpace(strings.ToLower(answer))
+			if answer != "y" {
+				fmt.Println("Aborted.")
+				return nil
+			}
 		}
 
 		cfg.Repositories = append(cfg.Repositories, newRepos...)

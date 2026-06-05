@@ -7,12 +7,12 @@ import (
 	"strings"
 )
 
-func resolveSource(source string, isTTY bool, reader *bufio.Reader) (string, error) {
+func resolveSource(source string, canPrompt bool, reader *bufio.Reader) (string, error) {
 	source = strings.TrimSpace(source)
 
-	// If missing, go interactive (TTY only).
+	// If missing, go interactive when prompts are allowed.
 	if source == "" {
-		if !isTTY {
+		if !canPrompt {
 			return "", fmt.Errorf("missing required value(s): --source")
 		}
 		v := promptSourceInteractive(reader)
@@ -35,7 +35,7 @@ func resolveSource(source string, isTTY bool, reader *bufio.Reader) (string, err
 	// org/repo: needs interactive disambiguation.
 	// Keep option and interactive behavior consistent.
 	if strings.Count(source, "/") == 1 {
-		if !isTTY {
+		if !canPrompt {
 			return "", fmt.Errorf("ambiguous --source %q: provide a full URL, or run interactively to choose SSH/HTTPS", source)
 		}
 		orgRepo := strings.TrimSuffix(source, ".git")

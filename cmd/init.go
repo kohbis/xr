@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/kohbis/xr/internal/config"
+	"github.com/kohbis/xr/internal/interactive"
 	"github.com/kohbis/xr/internal/workspace"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -23,6 +24,7 @@ initializes a git repository, adds submodules for remote repos,
 and creates symlinks for local repos.
 
 Interactive: prompts for directory, config, and .gitignore choices.
+Not suitable for automation; --non-interactive returns an error.
 
 Use -f / --file to set the repos.yaml path for this init (default: <dir>/repos.yaml).
 Other commands use the global --config flag instead; avoid combining both for init.
@@ -34,6 +36,10 @@ Examples:
 	GroupID: "workspace",
 	Args:    cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if interactive.NonInteractive(cmd) {
+			return fmt.Errorf("xr init requires an interactive terminal; omit --non-interactive")
+		}
+
 		dir := "."
 		if len(args) > 0 {
 			dir = args[0]

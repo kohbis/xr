@@ -133,17 +133,17 @@ Do not use `fmt.Println` directly for user-visible output in `internal/` package
 
 ### Non-interactive and automation flags
 
-**Target convention** (not fully implemented yet): when adding/changing commands that prompt users, provide explicit non-interactive behavior:
-- `--non-interactive` should disable TTY prompts
-- `--yes` should explicitly opt into destructive or confirm-required actions
+When adding/changing commands that prompt users, provide explicit non-interactive behavior:
+- `--non-interactive` (global) disables TTY prompts
+- `--yes` (global) opts into destructive or confirm-required actions
 - in non-interactive mode, commands should return clear errors instead of waiting for input
 
-**Current behavior** (document accurately in README/SKILL; do not imply flags exist):
-- No global `--non-interactive` or `--yes` flags today; several commands infer interactivity from stdin TTY.
-- `xr repo remove`: without a TTY, repo name(s) and `--force` are required.
-- `xr repo import`: `--dry-run` previews; applying still prompts on stdin.
-- `xr repo sync`: runs by default; without a TTY, dirty/checkout prompts are skipped; use `--allow-dirty` when appropriate; use `--dry-run` to preview.
-- `xr init`: interactive prompts only (not automation-friendly).
+**Current behavior:**
+- Global `--non-interactive` and `--yes` on the root command; `internal/interactive` helpers read them via `ShouldPrompt` / `Yes`.
+- `xr repo remove`: repo name(s) and `--force` or `--yes` required when not prompting.
+- `xr repo import`: `--yes` applies without prompt; `--non-interactive` without `--yes` returns an error; `--dry-run` previews.
+- `xr repo sync`: no dirty/checkout prompts when `--non-interactive` or stdin is not a TTY; use `--allow-dirty` when appropriate.
+- `xr init`: interactive only; `--non-interactive` returns an error.
 
 ### JSON/report output conventions
 

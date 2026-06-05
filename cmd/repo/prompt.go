@@ -3,20 +3,11 @@ package repo
 import (
 	"bufio"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
 	"github.com/manifoldco/promptui"
 )
-
-func isInteractiveTTY() (bool, error) {
-	in, err := os.Stdin.Stat()
-	if err != nil {
-		return false, err
-	}
-	return (in.Mode() & os.ModeCharDevice) != 0, nil
-}
 
 func promptSelect(_ *bufio.Reader, label string, options []string, size int, startInSearchMode bool) (int, error) {
 	sel := promptui.Select{

@@ -30,7 +30,7 @@ source <(xr completion bash)
 source <(xr completion zsh)
 ```
 
-Subcommands and flags are completed automatically. Repository names are completed for `xr tree`, `xr search --repo`, `xr diff --repo`, `xr repo sync`, and `xr repo remove`, using the same config as `xr --config` (default: `./repos.yaml`).
+Subcommands and flags are completed automatically. Repository names are completed for `xr tree`, `xr search --repo`, `xr diff` (and `xr diff file` / `pattern` / `history`), `xr repo sync`, and `xr repo remove`, using the same config as `xr --config` (default: `./repos.yaml`).
 
 ## Prerequisites
 
@@ -92,8 +92,10 @@ If you want the full surface area, see `xr --help` and `xr <cmd> --help`.
 | Match branches | `xr repo sync` |
 | Preview sync (no changes) | `xr repo sync --dry-run` |
 | Fetch remote + match branches | `xr repo sync --update` |
+| Fetch with prune stale refs | `xr repo sync --update --prune` |
 | Fetch, pull, and submodules | `xr repo sync --update --submodules` |
 | Apply a work plan | `xr repo sync --work NAME` |
+| Import discoveries without prompt | `xr repo import --yes` |
 | Same as work plan sync | `xr work checkout NAME` |
 | Search across repos | `xr search PATTERN` |
 | Compare a file across repos | `xr diff file PATH` |
@@ -104,7 +106,7 @@ If you want the full surface area, see `xr --help` and `xr <cmd> --help`.
 Preview without side effects uses `--dry-run` on both commands:
 
 - **`xr repo sync`**: runs by default; add `--dry-run` to preview git operations.
-- **`xr repo import`**: prompts before writing; use `--dry-run` to scan without writing.
+- **`xr repo import`**: prompts before writing; use `--yes` to apply unattended or `--dry-run` to scan without writing.
 
 ### Config path: `xr init` vs other commands
 
@@ -113,14 +115,14 @@ Preview without side effects uses `--dry-run` on both commands:
 
 ### Automation (CI / agents)
 
-There is no `--non-interactive` flag today. Behavior depends on whether stdin is a TTY:
+Global flags: `--non-interactive` (disable prompts; fail instead of blocking) and `--yes` (confirm writes or destructive actions).
 
 | Command | Unattended-friendly approach |
 |---------|------------------------------|
-| `xr repo remove` | Pass repo name(s) and `--force` (required without a TTY) |
-| `xr repo import` | Use `--dry-run` to inspect; applying still prompts for `y/N` |
-| `xr repo sync` | Runs by default (often with `--update`); prompts for dirty/checkout are skipped without a TTY (use `--allow-dirty` when needed) |
-| `xr init` | Interactive only (multiple prompts) |
+| `xr repo remove` | Pass repo name(s) and `--force` or `--yes` |
+| `xr repo import` | `xr repo import --yes` to apply; `--dry-run` to inspect only |
+| `xr repo sync` | Runs by default (often with `--update`); use `--allow-dirty` when dirty repos should proceed without prompts |
+| `xr init` | Interactive only; `--non-interactive` returns an error |
 | Machine-readable output | `--json` on `xr repo list`, `xr search`, and `xr diff file` / `pattern` / `history`; `--no-color` globally |
 
 See [`SKILL.md`](./SKILL.md) for agent-oriented detail.
@@ -179,6 +181,8 @@ xr --config /path/to/workspace-b/repos.yaml repo sync --work example
 |------|-------------|
 | `--config` | Path to config file (default: `repos.yaml` in current directory) |
 | `--no-color` | Disable ANSI colors (useful for logs and parsers) |
+| `--non-interactive` | Disable prompts; commands fail instead of waiting for input |
+| `--yes` | Confirm destructive or write actions without prompting |
 
 Per-command flags: `xr <cmd> --help`.
 
