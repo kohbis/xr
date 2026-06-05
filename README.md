@@ -91,7 +91,8 @@ If you want the full surface area, see `xr --help` and `xr <cmd> --help`.
 |------|---------|
 | Match branches (preview) | `xr repo sync` |
 | Match branches (execute) | `xr repo sync --apply` |
-| Fetch remote + match branches | `xr repo sync --fetch --pull --apply` |
+| Fetch remote + match branches | `xr repo sync --update --apply` |
+| Fetch, pull, and submodules | `xr repo sync --update --submodules --apply` |
 | Apply a work plan | `xr repo sync --work NAME` (add `--apply` to execute) |
 | Same as work plan sync | `xr work checkout NAME --apply` |
 | Search across repos | `xr search PATTERN` |
@@ -118,7 +119,7 @@ There is no `--non-interactive` flag today. Behavior depends on whether stdin is
 |---------|------------------------------|
 | `xr repo remove` | Pass repo name(s) and `--force` (required without a TTY) |
 | `xr repo import` | Use `--dry-run` to inspect; applying still prompts for `y/N` |
-| `xr repo sync` | Use `--apply`; prompts for dirty/checkout are skipped without a TTY (use `--allow-dirty` when needed) |
+| `xr repo sync` | Use `--apply` (often with `--update`); prompts for dirty/checkout are skipped without a TTY (use `--allow-dirty` when needed) |
 | `xr init` | Interactive only (multiple prompts) |
 | Machine-readable output | `--json` on `xr repo list`, `xr search`, and `xr diff` modes (`--pattern`, `--file`, `--history`); `--no-color` globally |
 

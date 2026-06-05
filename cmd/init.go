@@ -117,7 +117,7 @@ Examples:
 		}
 
 		fmt.Printf("\nWorkspace initialized successfully.\n")
-		fmt.Printf("Run 'xr repo sync --submodules' to sync submodules.\n")
+		fmt.Printf("Run 'xr repo sync --update --submodules --apply' to sync submodules.\n")
 		return nil
 	},
 }
