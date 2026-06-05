@@ -38,8 +38,8 @@ Subcommands and flags are completed automatically. Repository names are complete
 
 | Command | Required | Used by | Purpose |
 |---------|----------|---------|---------|
-| `git` | **Yes** | `xr init`, `xr repo sync`, `xr repo import`, `xr diff`, `xr diff --history` | Repository initialization, branch switching, submodule management, `git log` / `git diff` in each repo |
-| `diff` | Yes (pre-installed) | `xr diff --file` | Unified diff output between files across repositories |
+| `git` | **Yes** | `xr init`, `xr repo sync`, `xr repo import`, `xr diff`, `xr diff history` | Repository initialization, branch switching, submodule management, `git log` / `git diff` in each repo |
+| `diff` | Yes (pre-installed) | `xr diff file` | Unified diff output between files across repositories |
 | `rg` (ripgrep) | No | `xr search` | Fast search engine; falls back to a built-in implementation if not found |
 
 Install missing tools as needed:
@@ -96,7 +96,7 @@ If you want the full surface area, see `xr --help` and `xr <cmd> --help`.
 | Apply a work plan | `xr repo sync --work NAME` |
 | Same as work plan sync | `xr work checkout NAME` |
 | Search across repos | `xr search PATTERN` |
-| Compare a file across repos | `xr diff --file PATH` |
+| Compare a file across repos | `xr diff file PATH` |
 | Another workspace config | `xr --config PATH repo list` |
 
 ### Preview vs execute
@@ -121,7 +121,7 @@ There is no `--non-interactive` flag today. Behavior depends on whether stdin is
 | `xr repo import` | Use `--dry-run` to inspect; applying still prompts for `y/N` |
 | `xr repo sync` | Runs by default (often with `--update`); prompts for dirty/checkout are skipped without a TTY (use `--allow-dirty` when needed) |
 | `xr init` | Interactive only (multiple prompts) |
-| Machine-readable output | `--json` on `xr repo list`, `xr search`, and `xr diff` modes (`--pattern`, `--file`, `--history`); `--no-color` globally |
+| Machine-readable output | `--json` on `xr repo list`, `xr search`, and `xr diff file` / `pattern` / `history`; `--no-color` globally |
 
 See [`SKILL.md`](./SKILL.md) for agent-oriented detail.
 
@@ -163,7 +163,7 @@ xr search \"TODO\"
 ### 5) Compare a file across repos / inspect drift
 
 ```sh
-xr diff --file go.mod
+xr diff file go.mod
 ```
 
 ### 6) Use `--config` when you manage multiple workspaces

@@ -36,7 +36,7 @@ Type is auto-inferred: local paths (`/…` or `~…`) → `symlink`; remote URLs
 | Apply a work plan | `xr repo sync --work NAME` |
 | Same via work alias | `xr work checkout NAME` |
 | Search across repos | `xr search PATTERN` |
-| Compare a file across repos | `xr diff --file PATH` |
+| Compare a file across repos | `xr diff file PATH` |
 | Another workspace config | `xr --config PATH repo list` |
 
 **Preview vs execute:** `xr repo sync` runs by default; use `--dry-run` to preview. `xr repo import` prompts before writing; use `--dry-run` to scan only.
@@ -116,25 +116,24 @@ xr search --json "pattern"         # machine-readable match output
 
 ### Cross-repository comparison (`xr diff`)
 
-Modes are mutually exclusive (`--pattern`, `--file`, `--history`, or default git diff per repo).
-
 ```sh
 xr diff                        # git diff in each repo (pager disabled)
-xr diff --pattern "version"        # show where pattern occurs per-repo (no diff output)
-xr diff --file go.mod              # unified diff of a file across all repos
-xr diff --history "fix:"           # search git commit messages across repos
-xr diff --pattern "foo" -r a -r b  # repo filter (--pattern / --file / --history)
-xr diff --file go.mod -r a -r b
-xr diff --history "fix:" --json    # structured output (--pattern / --file / --history only)
-xr diff --pattern "foo" --report diff-report.json  # write JSON report (same modes)
+xr diff -- --stat              # pass extra args to git
+xr diff -r project-a           # limit git diff to one repo
+xr diff file go.mod            # unified diff of a file across all repos
+xr diff pattern "version"      # show where pattern occurs per-repo
+xr diff history "fix:"         # search git commit messages across repos
+xr diff file go.mod -r a -r b
+xr diff history "fix:" --json
+xr diff pattern "foo" --report diff-report.json
 ```
 
-`--json` and `--report` are **not** supported for default git diff mode.
+`--json` and `--report` work on `xr diff file`, `pattern`, and `history` only (not default git diff).
 
 **Agent use cases:**
-- Compare dependency files (`go.mod`, `package.json`, `Cargo.toml`) to find version skew
-- Find which repos have already applied a given change (`--pattern`)
-- Audit recent fixes applied across the workspace (`--history`)
+- Compare dependency files (`go.mod`, `package.json`, `Cargo.toml`) to find version skew (`xr diff file`)
+- Find which repos have already applied a given change (`xr diff pattern`)
+- Audit recent fixes applied across the workspace (`xr diff history`)
 
 ---
 
@@ -208,7 +207,7 @@ repos:
 |---------|----------|------------|
 | `xr repo list` | yes | no |
 | `xr search` | yes | no |
-| `xr diff` (with `--pattern`, `--file`, or `--history`) | yes | yes |
+| `xr diff file` / `pattern` / `history` | yes | yes |
 | `xr diff` (default git diff) | no | no |
 | `xr repo sync` | not yet | not yet |
 
@@ -227,6 +226,6 @@ There is no `--non-interactive` flag. When stdin is **not** a TTY:
 
 Tips:
 
-- Prefer `--json` on `repo list`, `search`, and `diff` modes when chaining output into other tools.
+- Prefer `--json` on `repo list`, `search`, and `diff file` / `pattern` / `history` when chaining output into other tools.
 - Add `--no-color` for stable log parsing.
 - For `repo sync`, use `--dry-run` to preview before running without it.
