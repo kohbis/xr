@@ -10,7 +10,6 @@ import (
 type RepoType string
 
 const (
-	RepoTypeGit     RepoType = "git"
 	RepoTypeSymlink RepoType = "symlink"
 	RepoTypeClone   RepoType = "clone"
 )
@@ -82,12 +81,14 @@ func normalize(cfg *Config) (*Config, error) {
 			if len(repo.Source) > 0 && (repo.Source[0] == '/' || repo.Source[0] == '~') {
 				cfg.Repositories[i].Type = RepoTypeSymlink
 			} else {
-				cfg.Repositories[i].Type = RepoTypeGit
+				cfg.Repositories[i].Type = RepoTypeClone
 			}
 		}
 		switch cfg.Repositories[i].Type {
-		case RepoTypeGit, RepoTypeSymlink, RepoTypeClone:
+		case RepoTypeSymlink, RepoTypeClone:
 			// valid
+		case "git":
+			return nil, fmt.Errorf("repository %q: type %q is no longer supported (use %q)", repo.Name, repo.Type, RepoTypeClone)
 		default:
 			return nil, fmt.Errorf("repository %q: unknown type %q", repo.Name, repo.Type)
 		}

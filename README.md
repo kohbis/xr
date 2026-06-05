@@ -2,7 +2,7 @@
 
 Cross-repository search & management CLI.
 
-`xr` manages multiple repositories as a single workspace using git submodules and symlinks, and provides tools to search, inspect, and compare across them.
+`xr` manages multiple repositories as a single workspace using git clones and symlinks, and provides tools to search, inspect, and compare across them.
 
 ## Installation
 
@@ -38,7 +38,7 @@ Subcommands and flags are completed automatically. Repository names are complete
 
 | Command | Required | Used by | Purpose |
 |---------|----------|---------|---------|
-| `git` | **Yes** | `xr init`, `xr repo sync`, `xr repo import`, `xr diff`, `xr diff history` | Repository initialization, branch switching, submodule management, `git log` / `git diff` in each repo |
+| `git` | **Yes** | `xr init`, `xr repo sync`, `xr repo import`, `xr diff`, `xr diff history` | Clones, branch switching, `git log` / `git diff` in each repo |
 | `diff` | Yes (pre-installed) | `xr diff file` | Unified diff output between files across repositories |
 | `rg` (ripgrep) | No | `xr search` | Fast search engine; falls back to a built-in implementation if not found |
 
@@ -93,7 +93,7 @@ If you want the full surface area, see `xr --help` and `xr <cmd> --help`.
 | Preview sync (no changes) | `xr repo sync --dry-run` |
 | Fetch remote + match branches | `xr repo sync --update` |
 | Fetch with prune stale refs | `xr repo sync --update --prune` |
-| Fetch, pull, and submodules | `xr repo sync --update --submodules` |
+| Fetch, pull | `xr repo sync --update` |
 | Import discoveries without prompt | `xr repo import --yes` |
 | Search across repos | `xr search PATTERN` |
 | Compare a file across repos | `xr diff file PATH` |

@@ -4,28 +4,23 @@ import "testing"
 
 func TestEffectiveSyncNetwork(t *testing.T) {
 	tests := []struct {
-		name       string
-		update     bool
-		submod     bool
-		wantFetch  bool
-		wantPull   bool
-		wantSubmod bool
+		name      string
+		update    bool
+		wantFetch bool
+		wantPull  bool
 	}{
-		{name: "checkout only", wantFetch: false, wantPull: false, wantSubmod: false},
-		{name: "update", update: true, wantFetch: true, wantPull: true, wantSubmod: false},
-		{name: "submodules only", submod: true, wantFetch: false, wantPull: false, wantSubmod: true},
-		{name: "update and submodules", update: true, submod: true, wantFetch: true, wantPull: true, wantSubmod: true},
+		{name: "checkout only", wantFetch: false, wantPull: false},
+		{name: "update", update: true, wantFetch: true, wantPull: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			syncUpdate = tt.update
-			syncSubmod = tt.submod
 
-			gotFetch, gotPull, gotSubmod := effectiveSyncNetwork()
-			if gotFetch != tt.wantFetch || gotPull != tt.wantPull || gotSubmod != tt.wantSubmod {
-				t.Fatalf("effectiveSyncNetwork() = (%t,%t,%t), want (%t,%t,%t)",
-					gotFetch, gotPull, gotSubmod, tt.wantFetch, tt.wantPull, tt.wantSubmod)
+			gotFetch, gotPull := effectiveSyncNetwork()
+			if gotFetch != tt.wantFetch || gotPull != tt.wantPull {
+				t.Fatalf("effectiveSyncNetwork() = (%t,%t), want (%t,%t)",
+					gotFetch, gotPull, tt.wantFetch, tt.wantPull)
 			}
 		})
 	}

@@ -6,7 +6,7 @@ For using the `xr` CLI as an agent tool across a multi-repository workspace, see
 
 ## Project Overview
 
-`xr` is a Go CLI tool for managing multiple Git repositories as a single workspace. It uses git submodules, clones, and symlinks to organize repos, and provides cross-repository search, comparison, and tree visualization.
+`xr` is a Go CLI tool for managing multiple Git repositories as a single workspace. It uses git clones and symlinks to organize repos, and provides cross-repository search, comparison, and tree visualization.
 
 ## Repository Structure
 
@@ -38,7 +38,7 @@ xr/
 Prerequisites for development:
 - **Go 1.25+** — required to build and test
 - **golangci-lint** — required for `make lint` and CI
-- **git** — required for submodule operations and tests
+- **git** — required for clone operations and tests
 
 ## Development Workflow
 
@@ -111,11 +111,10 @@ All four must pass before merging.
 The config is loaded via `internal/config.Load(path)` and saved via `config.Save(path, cfg)`.
 
 Repository types:
-- `git` — remote git repo added as a submodule
-- `clone` — remote git repo added as a plain clone
+- `clone` — remote git repo cloned into the workspace directory (default)
 - `symlink` — local path added as a symlink
 
-Type inference in `normalize()`: local paths (starting with `/` or `~`) default to `symlink`; otherwise `git`.
+Type inference in `normalize()`: local paths (starting with `/` or `~`) default to `symlink`; otherwise `clone`.
 
 ### Output
 

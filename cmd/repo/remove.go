@@ -23,7 +23,6 @@ var removeCmd = &cobra.Command{
 The removal method depends on the repository type:
   - symlink: removes the symbolic link
   - clone:   removes the cloned directory
-  - git:     deinitializes and removes the git submodule
 
 Use --config-only to remove only from repos.yaml without touching the filesystem.
 
