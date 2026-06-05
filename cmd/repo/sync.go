@@ -18,12 +18,13 @@ var syncCmd = &cobra.Command{
 	Short: "Sync repositories to match repos.yaml configuration",
 	Long: `Synchronize repositories to match the configuration in repos.yaml.
 
-By default this command previews actions only. Use --apply to run git operations.
+By default this command runs git operations. Use --dry-run to preview without changes.
 
-Sync options (combine with --apply to execute):
+Sync options:
   (none)           switch branches only
   --update         fetch and pull from remote
   --submodules     update submodules recursively (combine with --update for a full remote sync)
+  --dry-run        preview only
 
 Always switches to the branch in repos.yaml (or work plan override with --work).
 
@@ -33,20 +34,20 @@ Use --allow-dirty to proceed on dirty repos without prompting (recommended witho
 Without arguments, syncs all repositories. Specify repo names to sync only those.
 
 Examples:
-  # Preview branch checkout (no network)
+  # Switch branches to match repos.yaml
   xr repo sync
 
-  # Execute branch checkout
-  xr repo sync --apply
+  # Preview without changes
+  xr repo sync --dry-run
 
   # Fetch, checkout, and pull
-  xr repo sync --update --apply
+  xr repo sync --update
 
   # Fetch, pull, and update submodules
-  xr repo sync --update --submodules --apply
+  xr repo sync --update --submodules
 
   # Apply a work plan
-  xr repo sync --work example --apply`,
+  xr repo sync --work example`,
 	ValidArgsFunction: shellcomp.CompleteRepoNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runSync(cmd, args)
@@ -109,10 +110,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 		repoArgs = nil // operate on all repos in cfgCopy (already filtered)
 	}
 
-	if syncApply {
-		fmt.Printf("Syncing workspace...\n")
-	} else {
+	if syncDryRun {
 		fmt.Printf("Previewing workspace sync (no changes will be made).\n")
+	} else {
+		fmt.Printf("Syncing workspace...\n")
 	}
 
 	ws := workspace.New(filepath.Dir(cfgPath), cfg)
@@ -127,7 +128,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		Fetch:  fetch,
 		Prune:  syncPrune,
 		Submod: submod,
-		DryRun: !syncApply,
+		DryRun: syncDryRun,
 
 		AllowDirty:            syncDirty,
 		CreateBranchIfMissing: syncCreateBranchIfMissing,
@@ -154,7 +155,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
-	if isTTY && syncApply {
+	if isTTY && !syncDryRun {
 		opts.ConfirmCheckout = func(repo config.Repository, fromBranch, toBranch string) (bool, error) {
 			// If fromBranch is empty, it likely means a detached HEAD; still confirm.
 			label := fmt.Sprintf("%s: switch %q → %q", repo.Name, fromBranch, toBranch)
@@ -169,7 +170,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	if opts.DryRun {
 		fmt.Printf("\nPreview done: %d repo(s)\n", result.Skipped)
-		fmt.Printf("To execute: rerun the same command with --apply\n")
+		fmt.Printf("To execute: rerun without --dry-run\n")
 		if result.Failed > 0 {
 			fmt.Printf("Preview failures: %d\n", result.Failed)
 		}
