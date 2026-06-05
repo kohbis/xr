@@ -94,9 +94,7 @@ If you want the full surface area, see `xr --help` and `xr <cmd> --help`.
 | Fetch remote + match branches | `xr repo sync --update` |
 | Fetch with prune stale refs | `xr repo sync --update --prune` |
 | Fetch, pull, and submodules | `xr repo sync --update --submodules` |
-| Apply a work plan | `xr repo sync --work NAME` |
 | Import discoveries without prompt | `xr repo import --yes` |
-| Same as work plan sync | `xr work checkout NAME` |
 | Search across repos | `xr search PATTERN` |
 | Compare a file across repos | `xr diff file PATH` |
 | Another workspace config | `xr --config PATH repo list` |
@@ -141,38 +139,23 @@ xr init
 xr repo list
 ```
 
-### 3) Keep a subset of repos in scope with a work plan
-
-Work plans live at `.xr/work/<name>.yaml`. Start from “all repos”, then delete rows you don’t need, and optionally add `branch` to repos you want to pin.
-
-```sh
-xr work init example
-${EDITOR:-vim} .xr/work/example.yaml
-
-# preview first
-xr repo sync --work example --dry-run
-
-# run when ready
-xr repo sync --work example
-```
-
-### 4) Find a pattern across repositories
+### 3) Find a pattern across repositories
 
 ```sh
 xr search \"TODO\"
 ```
 
-### 5) Compare a file across repos / inspect drift
+### 4) Compare a file across repos / inspect drift
 
 ```sh
 xr diff file go.mod
 ```
 
-### 6) Use `--config` when you manage multiple workspaces
+### 5) Use `--config` when you manage multiple workspaces
 
 ```sh
 xr --config /path/to/workspace-a/repos.yaml repo list
-xr --config /path/to/workspace-b/repos.yaml repo sync --work example
+xr --config /path/to/workspace-b/repos.yaml repo sync --update
 ```
 
 ## Global Flags

@@ -14,12 +14,10 @@ For using the `xr` CLI as an agent tool across a multi-repository workspace, see
 xr/
 ├── main.go                  # Entry point, calls cmd.Execute()
 ├── cmd/                     # CLI commands (Cobra-based)
-│   ├── repo/                # Repository management commands
-│   └── work/                # Work plan commands (.xr/work)
+│   └── repo/                # Repository management commands
 ├── internal/                # Internal packages (not exported)
 │   ├── config/              # repos.yaml loading/saving and data types
 │   ├── git/                 # Shared git command/query helpers
-│   ├── work/                # Work plan file schema & path helpers (.xr/work)
 │   ├── workspace/           # Workspace initialization and git operations
 │   ├── search/              # Cross-repo search (ripgrep + fallback)
 │   ├── structure/           # Directory tree analysis and display
