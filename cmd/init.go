@@ -20,7 +20,17 @@ var initCmd = &cobra.Command{
 	Short: "Initialize a workspace",
 	Long: `Initialize a new xr workspace. Creates the directory structure,
 initializes a git repository, adds submodules for remote repos,
-and creates symlinks for local repos.`,
+and creates symlinks for local repos.
+
+Interactive: prompts for directory, config, and .gitignore choices.
+
+Use -f / --file to set the repos.yaml path for this init (default: <dir>/repos.yaml).
+Other commands use the global --config flag instead; avoid combining both for init.
+
+Examples:
+  xr init
+  xr init -f path/to/repos.yaml
+  xr init /path/to/workspace`,
 	GroupID: "workspace",
 	Args:    cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {

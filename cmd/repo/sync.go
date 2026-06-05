@@ -29,26 +29,34 @@ var syncCmd = &cobra.Command{
 	Short: "Sync repositories to match repos.yaml configuration",
 	Long: `Synchronize repositories to match the configuration in repos.yaml.
 
-This command performs the following for each repository (or specified repos):
-  - Fetch from remote (with --fetch)
-  - Switch to the branch specified in repos.yaml
-  - Pull latest changes (with --pull)
-  - Update submodules recursively (with --submodules)
+By default this command previews actions only. Use --apply to run git operations.
 
-By default, this command runs in a preview mode and prints what it would do.
-Use --apply to perform the actions.
+For each repository (or specified repos), optionally:
+  - Fetch from remote (--fetch; --prune requires --fetch)
+  - Switch to the branch in repos.yaml (or work plan override with --work)
+  - Pull latest changes (--pull)
+  - Update submodules recursively (--submodules)
+
+Scope with --work <name> (from .xr/work/<name>.yaml) instead of repo args.
+Use --allow-dirty to proceed on dirty repos without prompting (recommended without a TTY).
 
 Without arguments, syncs all repositories. Specify repo names to sync only those.
 
 Examples:
-  # Sync all repos: fetch, checkout configured branch, and pull
-  xr repo sync --fetch --pull
+  # Preview branch checkout (no network)
+  xr repo sync
 
-  # Sync specific repos with submodule updates
-  xr repo sync project-a project-b --pull --submodules
+  # Execute branch checkout
+  xr repo sync --apply
 
-  # Just switch branches to match repos.yaml (no fetch/pull)
-  xr repo sync`,
+  # Fetch, checkout, and pull (preview then add --apply)
+  xr repo sync --fetch --pull --apply
+
+  # Apply a work plan
+  xr repo sync --work example --apply
+
+  # Specific repos with submodules
+  xr repo sync project-a project-b --submodules --apply`,
 	ValidArgsFunction: shellcomp.CompleteRepoNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, cfgPath, err := loadConfigWithPath(cmd)

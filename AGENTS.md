@@ -133,19 +133,26 @@ Do not use `fmt.Println` directly for user-visible output in `internal/` package
 
 ### Non-interactive and automation flags
 
-When adding/changing commands that prompt users, provide explicit non-interactive behavior:
+**Target convention** (not fully implemented yet): when adding/changing commands that prompt users, provide explicit non-interactive behavior:
 - `--non-interactive` should disable TTY prompts
 - `--yes` should explicitly opt into destructive or confirm-required actions
 - in non-interactive mode, commands should return clear errors instead of waiting for input
 
-Current commands with non-interactive support include `xr init`, `xr repo import`, `xr repo remove`, and `xr repo sync`.
+**Current behavior** (document accurately in README/SKILL; do not imply flags exist):
+- No global `--non-interactive` or `--yes` flags today; several commands infer interactivity from stdin TTY.
+- `xr repo remove`: without a TTY, repo name(s) and `--force` are required.
+- `xr repo import`: `--dry-run` previews; applying still prompts on stdin.
+- `xr repo sync`: without a TTY, dirty/checkout prompts are skipped; use `--apply` to execute and `--allow-dirty` when appropriate.
+- `xr init`: interactive prompts only (not automation-friendly).
 
 ### JSON/report output conventions
 
 Prefer a consistent automation story across commands:
 - `--json` for structured stdout output
-- `--report <path>` for structured file output when the command produces aggregate results (for example, `xr repo sync` and selected `xr diff` modes)
+- `--report <path>` for structured file output when the command produces aggregate results (for example, selected `xr diff` modes)
 - include per-repository status and summary counts when applicable
+
+**Current behavior:** `--json` is implemented on `xr repo list`, `xr search`, and `xr diff` (`--pattern`, `--file`, `--history`). `--report` is implemented on those `xr diff` modes only. `xr repo sync` does not yet expose `--json` or `--report` (planned for a later CLI cleanup phase).
 
 ### Commit messages
 

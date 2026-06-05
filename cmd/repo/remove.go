@@ -24,7 +24,9 @@ The removal method depends on the repository type:
   - clone:   removes the cloned directory
   - git:     deinitializes and removes the git submodule
 
-Use --config-only to remove only from repos.yaml without touching the filesystem.`,
+Use --config-only to remove only from repos.yaml without touching the filesystem.
+
+Without a TTY, repo name(s) are required and --force is required to skip confirmation.`,
 	Args:              cobra.MinimumNArgs(0),
 	ValidArgsFunction: shellcomp.CompleteRepoNames,
 	RunE: func(cmd *cobra.Command, args []string) error {

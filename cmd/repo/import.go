@@ -18,7 +18,12 @@ var importDryRun bool
 var importCmd = &cobra.Command{
 	Use:   "import",
 	Short: "Import existing repositories into repos.yaml",
-	Long:  `Scan the workspace directory for repositories and add new ones to repos.yaml.`,
+	Long: `Scan the workspace directory for repositories and add new ones to repos.yaml.
+
+Lists newly discovered repos, then prompts for confirmation before writing repos.yaml.
+Use --dry-run to scan and print discoveries without writing or prompting.
+
+Without a TTY, applying still reads stdin for y/N and may block; use --dry-run in automation.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfgPath := cmd.Root().PersistentFlags().Lookup("config").Value.String()
 		if cfgPath == "" {

@@ -23,7 +23,12 @@ var searchCmd = &cobra.Command{
 	Short:   "Search across all repositories",
 	GroupID: "cross",
 	Long: `Search for a pattern across all repositories in the workspace.
-Uses ripgrep if available, falls back to built-in grep.`,
+Uses ripgrep if available, falls back to built-in grep.
+
+Examples:
+  xr search TODO
+  xr search -r project-a -g "*.go" "pattern"
+  xr search --json "pattern"`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := loadConfig()

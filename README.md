@@ -85,6 +85,45 @@ repositories:
 
 If you want the full surface area, see `xr --help` and `xr <cmd> --help`.
 
+### Quick reference
+
+| Goal | Command |
+|------|---------|
+| Match branches (preview) | `xr repo sync` |
+| Match branches (execute) | `xr repo sync --apply` |
+| Fetch remote + match branches | `xr repo sync --fetch --pull --apply` |
+| Apply a work plan | `xr repo sync --work NAME` (add `--apply` to execute) |
+| Same as work plan sync | `xr work checkout NAME --apply` |
+| Search across repos | `xr search PATTERN` |
+| Compare a file across repos | `xr diff --file PATH` |
+| Another workspace config | `xr --config PATH repo list` |
+
+### Preview vs execute
+
+Commands use different words for “dry run” vs “do it”:
+
+- **`xr repo sync`**: preview by default; add `--apply` to run git operations.
+- **`xr repo import`**: lists discoveries, then asks for confirmation; use `--dry-run` to scan without writing.
+
+### Config path: `xr init` vs other commands
+
+- Most commands: global `--config` (default: `./repos.yaml` in the current directory).
+- **`xr init` only**: `-f` / `--file` selects the repos.yaml to create or read during setup. Prefer this flag for init rather than combining it with `--config`.
+
+### Automation (CI / agents)
+
+There is no `--non-interactive` flag today. Behavior depends on whether stdin is a TTY:
+
+| Command | Unattended-friendly approach |
+|---------|------------------------------|
+| `xr repo remove` | Pass repo name(s) and `--force` (required without a TTY) |
+| `xr repo import` | Use `--dry-run` to inspect; applying still prompts for `y/N` |
+| `xr repo sync` | Use `--apply`; prompts for dirty/checkout are skipped without a TTY (use `--allow-dirty` when needed) |
+| `xr init` | Interactive only (multiple prompts) |
+| Machine-readable output | `--json` on `xr repo list`, `xr search`, and `xr diff` modes (`--pattern`, `--file`, `--history`); `--no-color` globally |
+
+See [`SKILL.md`](./SKILL.md) for agent-oriented detail.
+
 ### 1) Bootstrap a workspace from `repos.yaml`
 
 ```sh
@@ -138,6 +177,9 @@ xr --config /path/to/workspace-b/repos.yaml repo sync --work example
 | Flag | Description |
 |------|-------------|
 | `--config` | Path to config file (default: `repos.yaml` in current directory) |
+| `--no-color` | Disable ANSI colors (useful for logs and parsers) |
+
+Per-command flags: `xr <cmd> --help`.
 
 ## For AI Agents
 

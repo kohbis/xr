@@ -21,11 +21,14 @@ var (
 var checkoutCmd = &cobra.Command{
 	Use:   "checkout <name>",
 	Short: "Alias for repo sync --work",
-	Long: `Alias for applying a work plan by syncing repositories in the plan.
+	Long: `Apply a work plan by syncing repositories listed in .xr/work/<name>.yaml.
 
-This is equivalent to running:
-  xr repo sync --work <name>
-`,
+Equivalent to: xr repo sync --work <name>
+Accepts the same flags as repo sync (--apply, --fetch, --pull, etc.).
+
+Examples:
+  xr work checkout example
+  xr work checkout example --apply --fetch --pull`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := strings.TrimSuffix(strings.TrimSuffix(args[0], ".yaml"), ".yml")
