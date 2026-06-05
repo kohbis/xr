@@ -23,14 +23,23 @@ var diffCmd = &cobra.Command{
 	Use:     "diff",
 	Short:   "Run git diff across repositories (or optional pattern/file/history modes)",
 	GroupID: "cross",
-	Long: `By default runs git diff in each repository (pager disabled). Optional arguments
-after -- are passed to git (e.g. "xr diff -- --stat").
+	Long: `Compare or inspect repositories in the workspace.
 
-Other modes (mutually exclusive): --pattern to see where a regex appears across repos,
---file to compare a specific file across repos (unified diff via the diff command),
---history to search git commit history.
+Modes (use only one of --pattern, --file, or --history):
+  default     git diff in each repo (pager disabled); pass extra args after --
+  --pattern   show where a regex appears per repo
+  --file      unified diff of one path across repos (uses the diff command)
+  --history   search git commit messages across repos
 
-Limit repos with --repo / -r for the default git diff and for --history.`,
+Limit repos with --repo / -r. --json and --report work for --pattern, --file, and
+--history only (not for default git diff).
+
+Examples:
+  xr diff
+  xr diff -- --stat
+  xr diff --file go.mod
+  xr diff --pattern "version" -r project-a
+  xr diff --history "fix:" --json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := loadConfig()
 		if err != nil {

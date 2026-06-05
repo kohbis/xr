@@ -25,6 +25,25 @@ Type is auto-inferred: local paths (`/…` or `~…`) → `symlink`; remote URLs
 
 ---
 
+## Quick reference
+
+| Goal | Command |
+|------|---------|
+| Match branches (preview) | `xr repo sync` |
+| Match branches (execute) | `xr repo sync --apply` |
+| Fetch remote + match branches | `xr repo sync --fetch --pull --apply` |
+| Apply a work plan | `xr repo sync --work NAME` (add `--apply` to execute) |
+| Same via work alias | `xr work checkout NAME --apply` |
+| Search across repos | `xr search PATTERN` |
+| Compare a file across repos | `xr diff --file PATH` |
+| Another workspace config | `xr --config PATH repo list` |
+
+**Preview vs execute:** `xr repo sync` previews by default (`--apply` runs). `xr repo import` prompts before writing; use `--dry-run` to scan only.
+
+**Config paths:** most commands use global `--config`. `xr init` uses `-f` / `--file` for the repos.yaml path during setup (not `--config`).
+
+---
+
 ## Commands and What They Enable
 
 ### Workspace initialization
@@ -34,7 +53,7 @@ xr init [directory]
 xr init -f path/to/repos.yaml [directory]
 ```
 
-Sets up a workspace from `repos.yaml`: creates the directory, runs `git init`, adds submodules or clones for remote repos, and creates symlinks for local repos.
+Sets up a workspace from `repos.yaml`: creates the directory, runs `git init`, adds submodules or clones for remote repos, and creates symlinks for local repos. **Interactive only** (multiple prompts; not suitable for unattended CI).
 
 ---
 
@@ -49,30 +68,28 @@ xr repo add <name> -s <url> -b main -t clone  # add as clone on specific branch
 xr repo add <name> -s <source> -p sub/dir     # specify relative path in workspace
 xr repo remove <name>                   # remove from config and workspace
 xr repo remove <name> --force           # skip confirmation prompt
-xr repo remove <name> --non-interactive --yes   # automation-safe removal
 xr repo remove <name> --config-only     # remove from config only, keep files
-xr repo sync                            # switch to configured branches in repos.yaml
+xr repo sync                            # preview branch sync (repos.yaml or work plan)
+xr repo sync --apply                    # execute branch sync
 xr repo sync <name> [<name>...]         # sync specific repos only
-xr repo sync --fetch --pull             # fetch, switch branch, and pull latest
-xr repo sync --fetch --prune --pull     # fetch with prune, switch, and pull
-xr repo sync --submodules               # also update submodules recursively
-xr repo sync --json                     # structured sync result output
-xr repo sync --report sync-report.json  # write sync result report to file
-xr repo sync --non-interactive          # disable prompt-based confirmations
+xr repo sync --fetch --pull --apply     # fetch, switch branch, and pull latest
+xr repo sync --fetch --prune --pull --apply  # fetch with prune, switch, and pull
+xr repo sync --submodules --apply       # also update submodules recursively
 xr repo sync --work <name>              # scope sync to repos listed in .xr/work/<name>.yaml
-xr repo sync --create-branch-if-missing --fetch  # create local branch if missing (requires --fetch)
+xr repo sync --work <name> --apply      # execute work-plan sync
+xr repo sync --allow-dirty --apply      # skip dirty-repo prompts (or required without TTY)
+xr repo sync --create-branch-if-missing --fetch --apply  # create local branch if missing (requires --fetch)
 xr repo import                          # discover repos in workspace dir and add to repos.yaml
 xr repo import --dry-run                # preview discovered repos without writing
-xr repo import --non-interactive --yes  # apply import without prompts
 ```
 
 **Agent use cases:**
 - Enumerate the workspace before operating: `xr repo list`
 - Add a newly created repo to the workspace: `xr repo add`
-- Keep submodules in sync after upstream changes: `xr repo sync --submodules`
-- Ensure all repos are on their configured branches: `xr repo sync`
-- Bring all repos up to date with remote: `xr repo sync --fetch --pull`
-- Switch symlink repos to their configured branch: `xr repo sync` (requires `branch` in config)
+- Keep submodules in sync after upstream changes: `xr repo sync --submodules --apply`
+- Ensure all repos are on their configured branches: `xr repo sync --apply`
+- Bring all repos up to date with remote: `xr repo sync --fetch --pull --apply`
+- Switch symlink repos to their configured branch: `xr repo sync --apply` (requires `branch` in config)
 - Bootstrap a config from an existing workspace on disk: `xr repo import --dry-run`
 
 ---
@@ -99,16 +116,20 @@ xr search --json "pattern"         # machine-readable match output
 
 ### Cross-repository comparison (`xr diff`)
 
+Modes are mutually exclusive (`--pattern`, `--file`, `--history`, or default git diff per repo).
+
 ```sh
 xr diff                        # git diff in each repo (pager disabled)
 xr diff --pattern "version"        # show where pattern occurs per-repo (no diff output)
 xr diff --file go.mod              # unified diff of a file across all repos
 xr diff --history "fix:"           # search git commit messages across repos
-xr diff --pattern "foo" -r a -r b  # repo filter also applies to --pattern
-xr diff --file go.mod -r a -r b    # repo filter also applies to --file
-xr diff --history "fix:" --json    # structured diff history output
-xr diff --pattern "foo" --report diff-report.json  # write report for supported modes
+xr diff --pattern "foo" -r a -r b  # repo filter (--pattern / --file / --history)
+xr diff --file go.mod -r a -r b
+xr diff --history "fix:" --json    # structured output (--pattern / --file / --history only)
+xr diff --pattern "foo" --report diff-report.json  # write JSON report (same modes)
 ```
+
+`--json` and `--report` are **not** supported for default git diff mode.
 
 **Agent use cases:**
 - Compare dependency files (`go.mod`, `package.json`, `Cargo.toml`) to find version skew
@@ -159,10 +180,13 @@ Useful when operating on multiple independent workspaces from the same working d
 
 Work plans are YAML files stored under `.xr/work/<name>.yaml`. They scope multi-repo operations and can optionally override per-repo `branch` targets (used by `xr repo sync --work <name>`).
 
+`xr work checkout <name>` is an alias for `xr repo sync --work <name>` and accepts the same sync flags (`--apply`, `--fetch`, `--pull`, etc.).
+
 ```sh
 xr work init <name>          # create a work plan from repos.yaml (repo names only)
 xr work list                 # list available work plan names
-xr work checkout <name>      # alias for: xr repo sync --work <name>
+xr work checkout <name>      # same as: xr repo sync --work <name>
+xr work checkout <name> --apply --fetch --pull
 xr work delete <name> --yes  # delete the work plan file
 ```
 
@@ -178,9 +202,31 @@ repos:
 
 ---
 
-## Agent Automation Tips
+## Structured output (`--json` / `--report`)
 
-- Prefer `--json` when chaining `xr` output into other tools or prompts.
-- Use `--non-interactive --yes` for `init/import/remove` in CI or unattended runs.
+| Command | `--json` | `--report` |
+|---------|----------|------------|
+| `xr repo list` | yes | no |
+| `xr search` | yes | no |
+| `xr diff` (with `--pattern`, `--file`, or `--history`) | yes | yes |
+| `xr diff` (default git diff) | no | no |
+| `xr repo sync` | not yet | not yet |
+
+---
+
+## Agent automation (current behavior)
+
+There is no `--non-interactive` flag. When stdin is **not** a TTY:
+
+| Command | Behavior |
+|---------|----------|
+| `xr repo remove` | Requires repo name(s) and `--force` |
+| `xr repo import` | `--dry-run` is safe; applying still reads stdin for `y/N` (can block) |
+| `xr repo sync` | No dirty/checkout prompts; use `--apply` to run; use `--allow-dirty` if needed |
+| `xr init` | Not suitable for unattended use |
+
+Tips:
+
+- Prefer `--json` on `repo list`, `search`, and `diff` modes when chaining output into other tools.
 - Add `--no-color` for stable log parsing.
-- For sync orchestration, keep `xr repo sync --report <file>` as an artifact so failures can be triaged per repository.
+- For `repo sync`, run preview first (`xr repo sync`), then the same command with `--apply`.
