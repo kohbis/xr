@@ -23,7 +23,6 @@ Sync options:
   (none)           switch branches only
   --update         fetch and pull from remote
   --prune          prune deleted remote branches during fetch (requires --update)
-  --submodules     update submodules recursively (combine with --update for a full remote sync)
   --dry-run        preview only
 
 Always switches to the branch in repos.yaml.
@@ -42,10 +41,7 @@ Examples:
   xr repo sync --update
 
   # Fetch with prune, checkout, and pull
-  xr repo sync --update --prune
-
-  # Fetch, pull, and update submodules
-  xr repo sync --update --submodules`,
+  xr repo sync --update --prune`,
 	ValidArgsFunction: shellcomp.CompleteRepoNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runSync(cmd, args)
@@ -53,7 +49,7 @@ Examples:
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
-	fetch, pull, submod := effectiveSyncNetwork()
+	fetch, pull := effectiveSyncNetwork()
 	if err := validateSyncFlags(fetch); err != nil {
 		return err
 	}
@@ -80,7 +76,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 		Pull:   pull,
 		Fetch:  fetch,
 		Prune:  syncPrune,
-		Submod: submod,
 		DryRun: syncDryRun,
 
 		AllowDirty:            syncDirty,

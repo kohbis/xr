@@ -13,15 +13,14 @@ This document describes what AI agents can accomplish with the `xr` CLI across a
 
 ## Workspace Model
 
-`xr` manages a set of repositories defined in `repos.yaml`. All repos are materialized under a single `workspace` directory (default: `./repos`). Three repo types exist:
+`xr` manages a set of repositories defined in `repos.yaml`. All repos are materialized under a single workspace directory (default: `./repos`). Three repo types exist:
 
 | Type | How it works | When to use |
 |------|-------------|-------------|
-| `git` | added as a git submodule | remote repo, versioned reference |
-| `clone` | plain `git clone` | remote repo, mutable local copy |
+| `clone` | plain `git clone` (default for remote URLs) | remote repo, local working copy |
 | `symlink` | symlink to a local path | local repo already on disk |
 
-Type is auto-inferred: local paths (`/…` or `~…`) → `symlink`; remote URLs → `git`.
+Type is auto-inferred: local paths (`/…` or `~…`) → `symlink`; remote URLs → `clone`.
 
 ---
 
@@ -33,7 +32,6 @@ Type is auto-inferred: local paths (`/…` or `~…`) → `symlink`; remote URLs
 | Preview sync (no changes) | `xr repo sync --dry-run` |
 | Fetch remote + match branches | `xr repo sync --update` |
 | Fetch with prune stale refs | `xr repo sync --update --prune` |
-| Fetch, pull, and submodules | `xr repo sync --update --submodules` |
 | Import discoveries without prompt | `xr repo import --yes` |
 | Search across repos | `xr search PATTERN` |
 | Compare a file across repos | `xr diff file PATH` |
@@ -54,7 +52,7 @@ xr init [directory]
 xr init -f path/to/repos.yaml [directory]
 ```
 
-Sets up a workspace from `repos.yaml`: creates the directory, runs `git init`, adds submodules or clones for remote repos, and creates symlinks for local repos. **Interactive only** (multiple prompts; not suitable for unattended CI).
+Sets up a workspace from `repos.yaml`: creates the directory, clones remote repos, and creates symlinks for local repos. **Interactive only** (multiple prompts; not suitable for unattended CI).
 
 ---
 
@@ -64,7 +62,6 @@ Sets up a workspace from `repos.yaml`: creates the directory, runs `git init`, a
 xr repo list                            # show all repos with type, branch, path, source
 xr repo list --json                     # machine-readable repo status output
 xr repo add <name> -s <source>          # add a repo (type inferred from source)
-xr repo add <name> -s <url> -b main -t clone  # add as clone on specific branch
 xr repo add <name> -s <source> -p sub/dir     # specify relative path in workspace
 xr repo remove <name>                   # remove from config and workspace
 xr repo remove <name> --force           # skip confirmation prompt
@@ -73,7 +70,6 @@ xr repo sync                            # switch branches to match repos.yaml
 xr repo sync --dry-run                  # preview without changes
 xr repo sync <name> [<name>...]         # sync specific repos only
 xr repo sync --update                   # fetch, switch branch, and pull latest
-xr repo sync --update --submodules      # fetch, pull, and update submodules
 xr repo sync --update --prune           # fetch with prune, switch, and pull
 xr repo sync --allow-dirty              # skip dirty-repo prompts (recommended with --non-interactive)
 xr repo sync --create-branch-if-missing --update  # create local branch if missing (requires --update)
@@ -85,7 +81,6 @@ xr repo import --dry-run                # preview discovered repos without writi
 **Agent use cases:**
 - Enumerate the workspace before operating: `xr repo list`
 - Add a newly created repo to the workspace: `xr repo add`
-- Keep submodules in sync after upstream changes: `xr repo sync --update --submodules`
 - Ensure all repos are on their configured branches: `xr repo sync`
 - Bring all repos up to date with remote: `xr repo sync --update`
 - Switch symlink repos to their configured branch: `xr repo sync` (requires `branch` in config)

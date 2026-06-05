@@ -20,8 +20,7 @@ var initCmd = &cobra.Command{
 	Use:   "init [directory]",
 	Short: "Initialize a workspace",
 	Long: `Initialize a new xr workspace. Creates the directory structure,
-initializes a git repository, adds submodules for remote repos,
-and creates symlinks for local repos.
+clones remote repos into the workspace directory, and creates symlinks for local repos.
 
 Interactive: prompts for directory, config, and .gitignore choices.
 Not suitable for automation; --non-interactive returns an error.
@@ -123,7 +122,7 @@ Examples:
 		}
 
 		fmt.Printf("\nWorkspace initialized successfully.\n")
-		fmt.Printf("Run 'xr repo sync --update --submodules' to sync submodules.\n")
+		fmt.Printf("Run 'xr repo sync --update' to fetch and update repositories.\n")
 		return nil
 	},
 }

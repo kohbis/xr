@@ -485,13 +485,13 @@ func TestRemoveClone_AlreadyRemoved(t *testing.T) {
 	}
 }
 
-func TestDetectRepo_SubmoduleWithGitFile(t *testing.T) {
+func TestDetectRepo_GitFileAsClone(t *testing.T) {
 	dir := t.TempDir()
-	repoDir := filepath.Join(dir, "sub-repo")
+	repoDir := filepath.Join(dir, "linked-repo")
 	if err := os.MkdirAll(repoDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(repoDir, ".git"), []byte("gitdir: ../.git/modules/sub-repo\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(repoDir, ".git"), []byte("gitdir: ../.git/modules/linked-repo\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -505,64 +505,20 @@ func TestDetectRepo_SubmoduleWithGitFile(t *testing.T) {
 		t.Fatalf("detectRepo() error = %v", err)
 	}
 	if repo == nil {
-		t.Fatal("detectRepo() returned nil for submodule")
+		t.Fatal("detectRepo() returned nil")
 	}
-	if repo.Type != config.RepoTypeGit {
-		t.Errorf("Type = %q, want %q (submodule has .git file, not dir)", repo.Type, config.RepoTypeGit)
-	}
-}
-
-func TestHasSubmodules(t *testing.T) {
-	tests := []struct {
-		name       string
-		setup      func(dir string) error
-		wantResult bool
-	}{
-		{
-			name: "with .gitmodules",
-			setup: func(dir string) error {
-				return os.WriteFile(filepath.Join(dir, ".gitmodules"), []byte("[submodule \"foo\"]\n\tpath = foo\n\turl = https://example.com/foo\n"), 0644)
-			},
-			wantResult: true,
-		},
-		{
-			name: "empty .gitmodules",
-			setup: func(dir string) error {
-				return os.WriteFile(filepath.Join(dir, ".gitmodules"), []byte(""), 0644)
-			},
-			wantResult: false,
-		},
-		{
-			name: "no .gitmodules",
-			setup: func(dir string) error {
-				return nil
-			},
-			wantResult: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			if err := tt.setup(dir); err != nil {
-				t.Fatal(err)
-			}
-			got := hasSubmodules(dir)
-			if got != tt.wantResult {
-				t.Errorf("hasSubmodules() = %v, want %v", got, tt.wantResult)
-			}
-		})
+	if repo.Type != config.RepoTypeClone {
+		t.Errorf("Type = %q, want %q", repo.Type, config.RepoTypeClone)
 	}
 }
 
 func TestSyncOptions(t *testing.T) {
 	opts := SyncOptions{
-		Pull:   true,
-		Fetch:  true,
-		Prune:  true,
-		Submod: true,
+		Pull:  true,
+		Fetch: true,
+		Prune: true,
 	}
-	if !opts.Pull || !opts.Fetch || !opts.Prune || !opts.Submod {
+	if !opts.Pull || !opts.Fetch || !opts.Prune {
 		t.Error("SyncOptions fields should be set correctly")
 	}
 }

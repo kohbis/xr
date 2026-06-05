@@ -26,8 +26,7 @@ var addCmd = &cobra.Command{
 	Long: `Add a new repository to repos.yaml and set it up in the workspace.
 The repository type is inferred from the source unless --type is specified:
   - Local path (starts with / or ~) → symlink
-  - Remote URL                      → git (submodule)
-  - Explicit --type clone           → clone
+  - Remote URL                      → clone
 
 If a repository with the same name or path already exists, an error is returned.`,
 	Args: cobra.RangeArgs(0, 1),
@@ -96,10 +95,12 @@ If a repository with the same name or path already exists, an error is returned.
 
 		if addType != "" {
 			switch strings.ToLower(strings.TrimSpace(addType)) {
-			case "git", "symlink", "clone":
+			case "symlink", "clone":
 				repo.Type = config.RepoType(strings.ToLower(strings.TrimSpace(addType)))
+			case "git":
+				return fmt.Errorf("--type git is no longer supported (use clone)")
 			default:
-				return fmt.Errorf("--type must be one of: git, symlink, clone (or omit for auto)")
+				return fmt.Errorf("--type must be one of: symlink, clone (or omit for auto)")
 			}
 		}
 
@@ -128,7 +129,7 @@ If a repository with the same name or path already exists, an error is returned.
 }
 
 func promptRepoTypeInteractive(reader *bufio.Reader) string {
-	i, err := promptSelect(reader, "Type", []string{"auto", "git (submodule)", "symlink", "clone"}, 10, false)
+	i, err := promptSelect(reader, "Type", []string{"auto", "symlink", "clone"}, 10, false)
 	if err != nil {
 		return ""
 	}
@@ -136,10 +137,8 @@ func promptRepoTypeInteractive(reader *bufio.Reader) string {
 	case 0:
 		return ""
 	case 1:
-		return "git"
-	case 2:
 		return "symlink"
-	case 3:
+	case 2:
 		return "clone"
 	default:
 		return ""
@@ -185,5 +184,5 @@ func init() {
 	addCmd.Flags().StringVarP(&addSource, "source", "s", "", "source URL or local path (required)")
 	addCmd.Flags().StringVarP(&addBranch, "branch", "b", "", "branch name")
 	addCmd.Flags().StringVarP(&addPath, "path", "p", "", "relative path within workspace (default: name)")
-	addCmd.Flags().StringVarP(&addType, "type", "t", "", "repository type: git, symlink, or clone (auto-detected if omitted)")
+	addCmd.Flags().StringVarP(&addType, "type", "t", "", "repository type: symlink or clone (auto-detected if omitted)")
 }

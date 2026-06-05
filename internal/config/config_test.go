@@ -35,8 +35,8 @@ repositories:
 		t.Fatalf("len(Repositories) = %d, want 2", len(cfg.Repositories))
 	}
 
-	if cfg.Repositories[0].Type != RepoTypeGit {
-		t.Errorf("repo[0].Type = %q, want %q", cfg.Repositories[0].Type, RepoTypeGit)
+	if cfg.Repositories[0].Type != RepoTypeClone {
+		t.Errorf("repo[0].Type = %q, want %q", cfg.Repositories[0].Type, RepoTypeClone)
 	}
 	if cfg.Repositories[1].Type != RepoTypeSymlink {
 		t.Errorf("repo[1].Type = %q, want %q", cfg.Repositories[1].Type, RepoTypeSymlink)
@@ -68,8 +68,8 @@ func TestLoad_TypeInference(t *testing.T) {
 		source   string
 		wantType RepoType
 	}{
-		{"git SSH URL", "git@github.com:user/repo.git", RepoTypeGit},
-		{"HTTPS URL", "https://github.com/user/repo.git", RepoTypeGit},
+		{"git SSH URL", "git@github.com:user/repo.git", RepoTypeClone},
+		{"HTTPS URL", "https://github.com/user/repo.git", RepoTypeClone},
 		{"absolute path", "/home/user/local-repo", RepoTypeSymlink},
 		{"tilde path", "~/projects/repo", RepoTypeSymlink},
 	}
@@ -182,16 +182,16 @@ func TestRepository_IsSymlink(t *testing.T) {
 		t.Error("IsSymlink() = false, want true")
 	}
 
-	r.Type = RepoTypeGit
+	r.Type = RepoTypeClone
 	if r.IsSymlink() {
-		t.Error("IsSymlink() = true for git type, want false")
+		t.Error("IsSymlink() = true for clone type, want false")
 	}
 }
 
 func TestSave_NonWritablePath(t *testing.T) {
 	cfg := &Config{
 		Workspace:    "./ws",
-		Repositories: []Repository{{Name: "a", Source: "x", Type: RepoTypeGit}},
+		Repositories: []Repository{{Name: "a", Source: "x", Type: RepoTypeClone}},
 	}
 
 	err := Save("/nonexistent/dir/repos.yaml", cfg)
@@ -206,9 +206,9 @@ func TestRepository_IsClone(t *testing.T) {
 		t.Error("IsClone() = false, want true")
 	}
 
-	r.Type = RepoTypeGit
+	r.Type = RepoTypeSymlink
 	if r.IsClone() {
-		t.Error("IsClone() = true for git type, want false")
+		t.Error("IsClone() = true for symlink type, want false")
 	}
 }
 
@@ -219,7 +219,7 @@ func TestSaveAndLoadRoundtrip(t *testing.T) {
 	original := &Config{
 		Workspace: "./ws",
 		Repositories: []Repository{
-			{Name: "a", Source: "git@github.com:u/a.git", Branch: "main", Path: "a", Type: RepoTypeGit},
+			{Name: "a", Source: "git@github.com:u/a.git", Branch: "main", Path: "a", Type: RepoTypeClone},
 			{Name: "b", Source: "/local/b", Path: "b", Type: RepoTypeSymlink},
 		},
 	}
@@ -264,8 +264,8 @@ func TestReload_InfersTypes(t *testing.T) {
 		t.Fatalf("Reload() error = %v", err)
 	}
 
-	if reloaded.Repositories[0].Type != RepoTypeGit {
-		t.Errorf("repo[0].Type = %q, want %q", reloaded.Repositories[0].Type, RepoTypeGit)
+	if reloaded.Repositories[0].Type != RepoTypeClone {
+		t.Errorf("repo[0].Type = %q, want %q", reloaded.Repositories[0].Type, RepoTypeClone)
 	}
 	if reloaded.Repositories[1].Type != RepoTypeSymlink {
 		t.Errorf("repo[1].Type = %q, want %q", reloaded.Repositories[1].Type, RepoTypeSymlink)
@@ -290,6 +290,20 @@ func TestReload_DefaultsPathToName(t *testing.T) {
 
 	if reloaded.Repositories[0].Path != "my-repo" {
 		t.Errorf("Path = %q, want %q", reloaded.Repositories[0].Path, "my-repo")
+	}
+}
+
+func TestReload_RejectsGitType(t *testing.T) {
+	cfg := &Config{
+		Workspace: "./repos",
+		Repositories: []Repository{
+			{Name: "legacy", Source: "git@github.com:user/repo.git", Type: "git"},
+		},
+	}
+
+	_, err := Reload(cfg)
+	if err == nil {
+		t.Fatal("Reload() expected error for git type, got nil")
 	}
 }
 
