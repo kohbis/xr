@@ -113,6 +113,7 @@ xr search --json "pattern"         # machine-readable match output
 ```sh
 xr diff                        # git diff in each repo (pager disabled)
 xr diff -- --stat              # pass extra args to git
+xr diff -- --name-only         # list changed file paths per repo
 xr diff -r project-a           # limit git diff to one repo
 xr diff file go.mod            # unified diff of a file across all repos
 xr diff pattern "version"      # show where pattern occurs per-repo

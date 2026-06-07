@@ -34,6 +34,7 @@ Limit repos with --repo / -r on any diff command.
 Examples:
   xr diff
   xr diff -- --stat
+  xr diff -- --name-only
   xr diff -r project-a
   xr diff file go.mod
   xr diff pattern "version" -r project-a
