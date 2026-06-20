@@ -81,31 +81,37 @@ func runSync(cmd *cobra.Command, args []string) error {
 		AllowDirty:            syncDirty,
 		CreateBranchIfMissing: syncCreateBranchIfMissing,
 	}
-	if shouldPrompt && !opts.AllowDirty {
-		opts.ConfirmDirty = func(repo config.Repository, reason string) (bool, error) {
-			if proceedAllDirty {
+	yesFlag := interactive.Yes(cmd)
+	if !opts.AllowDirty {
+		if yesFlag {
+			opts.ConfirmDirty = func(_ config.Repository, _ string) (bool, error) {
 				return true, nil
 			}
-			choice, err := promptSelect(nil, fmt.Sprintf("%s: %s", repo.Name, reason), []string{"Skip", "Proceed", "Proceed all"}, 10, false)
-			if err != nil {
-				return false, err
-			}
-			switch choice {
-			case 0:
-				return false, nil
-			case 1:
-				return true, nil
-			case 2:
-				proceedAllDirty = true
-				return true, nil
-			default:
-				return false, nil
+		} else if shouldPrompt {
+			opts.ConfirmDirty = func(repo config.Repository, reason string) (bool, error) {
+				if proceedAllDirty {
+					return true, nil
+				}
+				choice, err := promptSelect(nil, fmt.Sprintf("%s: %s", repo.Name, reason), []string{"Skip", "Proceed", "Proceed all"}, 10, false)
+				if err != nil {
+					return false, err
+				}
+				switch choice {
+				case 0:
+					return false, nil
+				case 1:
+					return true, nil
+				case 2:
+					proceedAllDirty = true
+					return true, nil
+				default:
+					return false, nil
+				}
 			}
 		}
 	}
-	if shouldPrompt && !syncDryRun {
+	if shouldPrompt && !yesFlag && !syncDryRun {
 		opts.ConfirmCheckout = func(repo config.Repository, fromBranch, toBranch string) (bool, error) {
-			// If fromBranch is empty, it likely means a detached HEAD; still confirm.
 			label := fmt.Sprintf("%s: switch %q → %q", repo.Name, fromBranch, toBranch)
 			return promptYesNoSelect(label, true)
 		}
