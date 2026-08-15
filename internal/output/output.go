@@ -156,6 +156,25 @@ func PrintSyncFail(msg string) {
 	fmt.Printf("  %s✗ %s%s\n", c(colorRed), msg, c(colorReset))
 }
 
+// PrintActionSummary prints the final summary of a multi-repository operation.
+// changedLabel names what happened to the changed repos (e.g. "created").
+func PrintActionSummary(changedLabel string, changed, skipped, failed int) {
+	parts := []string{}
+	if changed > 0 {
+		parts = append(parts, fmt.Sprintf("%s%d %s%s", c(colorGreen), changed, changedLabel, c(colorReset)))
+	}
+	if skipped > 0 {
+		parts = append(parts, fmt.Sprintf("%s%d skipped%s", c(colorDim), skipped, c(colorReset)))
+	}
+	if failed > 0 {
+		parts = append(parts, fmt.Sprintf("%s%d failed%s", c(colorRed), failed, c(colorReset)))
+	}
+	if len(parts) == 0 {
+		parts = append(parts, "nothing to do")
+	}
+	fmt.Printf("\nDone: %s\n", strings.Join(parts, ", "))
+}
+
 // PrintSyncSummary prints the final summary of a sync operation.
 func PrintSyncSummary(synced, skipped, failed int) {
 	parts := []string{}

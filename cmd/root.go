@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/kohbis/xr/cmd/repo"
+	"github.com/kohbis/xr/cmd/worktree"
 	"github.com/kohbis/xr/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -56,6 +57,7 @@ func init() {
 	)
 
 	rootCmd.AddCommand(repo.Cmd)
+	rootCmd.AddCommand(worktree.Cmd)
 
 	// Ensure the default completion command is present so it can be grouped.
 	rootCmd.InitDefaultCompletionCmd()

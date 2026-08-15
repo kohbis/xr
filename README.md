@@ -65,7 +65,8 @@ cp repos.yaml.example repos.yaml
 ### repos.yaml
 
 ```yaml
-workspace: ./repos  # directory where repos will be placed
+workspace: ./repos      # directory where repos will be placed
+worktrees: ./worktrees  # directory for git worktrees (optional, this is the default)
 
 repositories:
   - name: project-a
@@ -97,6 +98,9 @@ If you want the full surface area, see `xr --help` and `xr <cmd> --help`.
 | Import discoveries without prompt | `xr repo import --yes` |
 | Search across repos | `xr search PATTERN` |
 | Compare a file across repos | `xr diff file PATH` |
+| Worktree in selected repos | `xr worktree add BRANCH -r NAME -r NAME` |
+| Worktrees of one task | `xr worktree list -b 'feat-x*'` |
+| Clean up merged worktrees | `xr worktree prune --gone` |
 | Another workspace config | `xr --config PATH repo list` |
 
 ### Preview vs execute
@@ -121,7 +125,9 @@ Global flags: `--non-interactive` (disable prompts; fail instead of blocking) an
 | `xr repo import` | `xr repo import --yes` to apply; `--dry-run` to inspect only |
 | `xr repo sync` | Runs by default (often with `--update`); use `--allow-dirty` when dirty repos should proceed without prompts |
 | `xr init` | Interactive only; `--non-interactive` returns an error |
-| Machine-readable output | `--json` on `xr repo list`, `xr search`, and `xr diff file` / `pattern` / `history`; `--no-color` globally |
+| `xr worktree add` | `--repo` is required (it prompts otherwise); add `--create` when the branch is new |
+| `xr worktree remove` / `prune --gone` | Pass `--yes`; `--force` additionally discards uncommitted changes |
+| Machine-readable output | `--json` on `xr repo list`, `xr search`, `xr worktree list` / `add` / `remove` / `prune`, and `xr diff file` / `pattern` / `history`; `--no-color` globally |
 
 See [`SKILL.md`](./SKILL.md) for agent-oriented detail.
 
@@ -151,7 +157,35 @@ xr search \"TODO\"
 xr diff file go.mod
 ```
 
-### 5) Use `--config` when you manage multiple workspaces
+### 5) Work on one task across several repositories
+
+A worktree is identified by the pair (repository, branch) — git refuses to check out
+the same branch twice, so that pair is the smallest unit that can exist. One task
+therefore maps to several worktrees, and a repository needing two pull requests for
+the same task simply gets two of them:
+
+```sh
+xr worktree add feat-x -r api -r web        # same branch in two repositories
+xr worktree add feat-x-followup -r api      # second PR from the same repository
+```
+
+Nothing is written to `repos.yaml`; `git worktree list` is the source of truth. Group
+the worktrees of one task by naming their branches consistently and filtering:
+
+```sh
+xr worktree list -b 'feat-x*'
+xr worktree remove 'feat-x*'
+```
+
+Worktrees are placed at `<worktrees>/<repo path>/<branch>` (branch names containing
+slashes nest as directories). After the pull requests are merged:
+
+```sh
+xr repo sync --update --prune               # let git notice the deleted branches
+xr worktree prune --gone                    # remove the worktrees left behind
+```
+
+### 6) Use `--config` when you manage multiple workspaces
 
 ```sh
 xr --config /path/to/workspace-a/repos.yaml repo list

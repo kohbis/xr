@@ -35,6 +35,8 @@ Type is auto-inferred: local paths (`/…` or `~…`) → `symlink`; remote URLs
 | Import discoveries without prompt | `xr repo import --yes` |
 | Search across repos | `xr search PATTERN` |
 | Compare a file across repos | `xr diff file PATH` |
+| Worktree in selected repos | `xr worktree add BRANCH -r NAME -r NAME` |
+| Clean up merged worktrees | `xr worktree prune --gone` |
 | Another workspace config | `xr --config PATH repo list` |
 
 **Preview vs execute:** `xr repo sync` runs by default; use `--dry-run` to preview. `xr repo import` prompts before writing; use `--yes` to apply unattended or `--dry-run` to scan only.
@@ -132,6 +134,30 @@ xr diff pattern "foo" --report diff-report.json
 
 ---
 
+### Worktrees (`xr worktree`)
+
+```sh
+xr worktree add <branch> -r <repo> [-r <repo>...]      # worktree for <branch> in the given repos
+xr worktree add <branch> -r <repo> --create --base main # create the branch too
+xr worktree list [-b 'feat-x*'] [-r <repo>] [--json]
+xr worktree remove <branch-glob> [--yes] [--force]     # --force discards uncommitted changes
+xr worktree prune [--gone --yes]                       # --gone also removes merged leftovers
+```
+
+A worktree is the pair `(repository, branch)` — git refuses the same branch twice — so a
+task spanning repos, or a repo needing two PRs, is several worktrees. Nothing is stored in
+`repos.yaml`; reconstruct a per-task view from a branch naming convention plus `-b <glob>`.
+Worktrees land in `<worktrees>/<repo path>/<branch>` (default `./worktrees`). `add` checks
+out an existing local branch, else tracks `origin/<branch>`, else needs `--create`.
+
+**Agent use cases:**
+- Isolated checkouts for a change spanning a subset of repos, leaving the main checkouts
+  that `xr repo sync` manages untouched
+- Several in-flight PRs of one repository side by side
+- Clean up after merges: `xr repo sync --update --prune && xr worktree prune --gone --yes`
+
+---
+
 ### Workspace structure (`xr tree`)
 
 ```sh
@@ -176,6 +202,7 @@ Useful when operating on multiple independent workspaces from the same working d
 |---------|----------|------------|
 | `xr repo list` | yes | no |
 | `xr search` | yes | no |
+| `xr worktree list` / `add` / `remove` / `prune` | yes | no |
 | `xr diff file` / `pattern` / `history` | yes | yes |
 | `xr diff` (default git diff) | no | no |
 | `xr repo sync` | not yet | not yet |
@@ -194,6 +221,8 @@ Global flags:
 | `xr repo remove` | `xr repo remove NAME --yes` (or `--force`) |
 | `xr repo import` | `xr repo import --yes` to apply; `--dry-run` to inspect only |
 | `xr repo sync` | Runs by default; add `--allow-dirty` when dirty repos should proceed without prompts |
+| `xr worktree add` | `-r` is required; add `--create` for a new branch |
+| `xr worktree remove` / `prune --gone` | Pass `--yes`; `--force` additionally discards uncommitted changes |
 | `xr init` | Interactive only; `--non-interactive` returns an error |
 
 Tips:

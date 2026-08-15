@@ -1,4 +1,5 @@
 workspace: ./repos           # directory where repos will be placed
+worktrees: ./worktrees       # directory for git worktrees (optional, this is the default)
 
 repositories:
   - name: project-a

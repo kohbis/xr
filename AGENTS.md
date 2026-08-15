@@ -14,11 +14,13 @@ For using the `xr` CLI as an agent tool across a multi-repository workspace, see
 xr/
 ├── main.go                  # Entry point, calls cmd.Execute()
 ├── cmd/                     # CLI commands (Cobra-based)
-│   └── repo/                # Repository management commands
+│   ├── repo/                # Repository management commands
+│   └── worktree/            # Worktree management commands
 ├── internal/                # Internal packages (not exported)
 │   ├── config/              # repos.yaml loading/saving and data types
 │   ├── git/                 # Shared git command/query helpers
 │   ├── workspace/           # Workspace initialization and git operations
+│   ├── worktree/            # Worktree creation/listing/removal across repos
 │   ├── search/              # Cross-repo search (ripgrep + fallback)
 │   ├── structure/           # Directory tree analysis and display
 │   ├── output/              # Human/JSON output helpers and result models
@@ -106,9 +108,24 @@ All four must pass before merging.
 1. Create `cmd/repo/<name>.go`.
 2. Register the command in `cmd/repo/cmd.go`'s `init()`.
 
+### Worktrees
+
+`internal/worktree` manages git worktrees for the configured repositories.
+
+- The unit is the pair `(repository, branch)` — git allows a branch in only one worktree.
+  There is deliberately no "task" or "group" entity; grouping is a branch-name filter.
+- Nothing is persisted in repos.yaml; `git worktree list --porcelain` is the source of truth.
+- `Manager.PathFor` is the only place the layout `<cfg.Worktrees>/<repo.Path>/<branch>` is derived.
+- `Manager.RepoDir` resolves symlink repos to their real location before git runs.
+- Paths are validated to stay inside the worktree directory; empty parents are removed on cleanup.
+
 ### Config (repos.yaml)
 
 The config is loaded via `internal/config.Load(path)` and saved via `config.Save(path, cfg)`.
+
+Top-level keys:
+- `workspace` — directory holding the repositories (default `./repos`)
+- `worktrees` — directory holding git worktrees (default `./worktrees`)
 
 Repository types:
 - `clone` — remote git repo cloned into the workspace directory (default)
@@ -140,6 +157,8 @@ When adding/changing commands that prompt users, provide explicit non-interactiv
 - `xr repo remove`: repo name(s) and `--force` or `--yes` required when not prompting.
 - `xr repo import`: `--yes` applies without prompt; `--non-interactive` without `--yes` returns an error; `--dry-run` previews.
 - `xr repo sync`: no dirty/checkout prompts when `--non-interactive` or stdin is not a TTY; use `--allow-dirty` when appropriate.
+- `xr worktree add`: prompts for repositories when `--repo` is omitted; `--non-interactive` requires `--repo`.
+- `xr worktree remove` / `prune --gone`: `--yes` confirms. Note `--force` here keeps git's meaning (discard uncommitted changes), unlike `xr repo remove --force`.
 - `xr init`: interactive only; `--non-interactive` returns an error.
 
 ### JSON/report output conventions
@@ -149,7 +168,7 @@ Prefer a consistent automation story across commands:
 - `--report <path>` for structured file output when the command produces aggregate results (for example, selected `xr diff` modes)
 - include per-repository status and summary counts when applicable
 
-**Current behavior:** `--json` is implemented on `xr repo list`, `xr search`, and `xr diff file` / `pattern` / `history`. `--report` is implemented on those `xr diff` subcommands only. `xr repo sync` does not yet expose `--json` or `--report` (planned for a later CLI cleanup phase).
+**Current behavior:** `--json` is implemented on `xr repo list`, `xr search`, `xr worktree list` / `add` / `remove` / `prune`, and `xr diff file` / `pattern` / `history`. `--report` is implemented on those `xr diff` subcommands only. `xr repo sync` does not yet expose `--json` or `--report` (planned for a later CLI cleanup phase).
 
 ### Commit messages
 
@@ -196,6 +215,6 @@ Changelog excludes commits with types `docs`, `test`, and `chore`.
 ## External Runtime Dependencies
 
 `xr` shells out to external tools at runtime:
-- `git` — required for `xr init`, `xr repo sync`, `xr repo import`, `xr diff`, `xr diff history`
+- `git` — required for `xr init`, `xr repo sync`, `xr repo import`, `xr worktree`, `xr diff`, `xr diff history`
 - `diff` — required for `xr diff file` (pre-installed on most systems)
 - `rg` (ripgrep) — optional for `xr search`; falls back to built-in implementation if absent
