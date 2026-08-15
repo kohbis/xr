@@ -60,6 +60,29 @@ func TestLoad_DefaultWorkspace(t *testing.T) {
 	if cfg.Workspace != "./repos" {
 		t.Errorf("Workspace = %q, want %q", cfg.Workspace, "./repos")
 	}
+	if cfg.Worktrees != "./worktrees" {
+		t.Errorf("Worktrees = %q, want %q", cfg.Worktrees, "./worktrees")
+	}
+}
+
+func TestLoad_WorktreesOverride(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "repos.yaml")
+	content := `worktrees: ./wt
+repositories: []
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Worktrees != "./wt" {
+		t.Errorf("Worktrees = %q, want %q", cfg.Worktrees, "./wt")
+	}
 }
 
 func TestLoad_TypeInference(t *testing.T) {

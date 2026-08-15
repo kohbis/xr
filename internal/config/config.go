@@ -24,6 +24,7 @@ type Repository struct {
 
 type Config struct {
 	Workspace    string       `yaml:"workspace"`
+	Worktrees    string       `yaml:"worktrees,omitempty"`
 	Repositories []Repository `yaml:"repositories"`
 }
 
@@ -74,6 +75,9 @@ func Reload(cfg *Config) (*Config, error) {
 func normalize(cfg *Config) (*Config, error) {
 	if cfg.Workspace == "" {
 		cfg.Workspace = "./repos"
+	}
+	if cfg.Worktrees == "" {
+		cfg.Worktrees = "./worktrees"
 	}
 
 	for i, repo := range cfg.Repositories {
