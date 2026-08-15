@@ -3,24 +3,13 @@ package repo
 import (
 	"bufio"
 	"fmt"
-	"sort"
 	"strings"
 
-	"github.com/manifoldco/promptui"
+	"github.com/kohbis/xr/internal/interactive"
 )
 
 func promptSelect(_ *bufio.Reader, label string, options []string, size int, startInSearchMode bool) (int, error) {
-	sel := promptui.Select{
-		Label:             label,
-		Items:             options,
-		Size:              minInt(len(options), size),
-		StartInSearchMode: startInSearchMode,
-	}
-	i, _, err := sel.Run()
-	if err != nil {
-		return 0, err
-	}
-	return i, nil
+	return interactive.Select(label, options, size, startInSearchMode)
 }
 
 func promptOptional(reader *bufio.Reader, label, defaultValue string) string {
@@ -48,84 +37,13 @@ func promptRequired(reader *bufio.Reader, label, defaultValue string) string {
 }
 
 func promptConfirm(label string, defaultNo bool) (bool, error) {
-	p := promptui.Prompt{
-		Label:     label,
-		IsConfirm: true,
-	}
-	if defaultNo {
-		p.Default = "n"
-	} else {
-		p.Default = "y"
-	}
-	_, err := p.Run()
-	if err == nil {
-		return true, nil
-	}
-	if err == promptui.ErrAbort {
-		return false, nil
-	}
-	return false, err
+	return interactive.Confirm(label, defaultNo)
 }
 
-// promptYesNoSelect is a non-aborting confirmation prompt implemented as a select.
-// This avoids promptui's confirm-mode abort behavior (which can look like an error)
-// when the user answers "no".
 func promptYesNoSelect(label string, defaultNo bool) (bool, error) {
-	items := []string{"No", "Yes"}
-	start := 0
-	if !defaultNo {
-		start = 1
-	}
-	sel := promptui.Select{
-		Label:     label,
-		Items:     items,
-		Size:      2,
-		CursorPos: start,
-	}
-	i, _, err := sel.Run()
-	if err != nil {
-		return false, err
-	}
-	return i == 1, nil
+	return interactive.YesNo(label, defaultNo)
 }
 
-// promptMultiSelectByDone is a dependency-free "multi-select" UX:
-// users repeatedly pick one item from the list until they choose [Done].
 func promptMultiSelectByDone(label string, items []string, size int) ([]string, error) {
-	if len(items) == 0 {
-		return nil, nil
-	}
-
-	remaining := append([]string{}, items...)
-	sort.Strings(remaining)
-
-	var selected []string
-	for len(remaining) > 0 {
-		menu := append([]string{"[Done]"}, remaining...)
-		i, err := promptSelect(nil, label, menu, size, true)
-		if err != nil {
-			return nil, err
-		}
-		if i == 0 {
-			break
-		}
-		chosen := menu[i]
-		selected = append(selected, chosen)
-
-		next := make([]string, 0, len(remaining)-1)
-		for _, it := range remaining {
-			if it != chosen {
-				next = append(next, it)
-			}
-		}
-		remaining = next
-	}
-	return selected, nil
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
+	return interactive.MultiSelectByDone(label, items, size)
 }
