@@ -30,7 +30,7 @@ source <(xr completion bash)
 source <(xr completion zsh)
 ```
 
-Subcommands and flags are completed automatically. Repository names are completed for `xr tree`, `xr search --repo`, `xr diff` (and `xr diff file` / `pattern` / `history`), `xr repo sync`, and `xr repo remove`, using the same config as `xr --config` (default: `./repos.yaml`).
+Subcommands and flags are completed automatically. Repository names are completed for `xr tree`, `xr search --repo`, `xr exec --repo`, `xr diff` (and `xr diff file` / `pattern` / `history`), `xr repo sync`, and `xr repo remove`, using the same config as `xr --config` (default: `./repos.yaml`).
 
 ## Prerequisites
 
@@ -98,6 +98,7 @@ If you want the full surface area, see `xr --help` and `xr <cmd> --help`.
 | Bootstrap without prompts | `xr repo sync --clone-missing --update` |
 | Sync many repos in parallel | `xr repo sync --update -j 8` |
 | Import discoveries without prompt | `xr repo import --yes` |
+| Run a command in every repo | `xr exec -- go test ./...` |
 | Search across repos | `xr search PATTERN` |
 | Compare a file across repos | `xr diff file PATH` |
 | Worktree in selected repos | `xr worktree add BRANCH -r NAME -r NAME` |
@@ -130,7 +131,7 @@ Global flags: `--non-interactive` (disable prompts; fail instead of blocking) an
 | `xr init` | Interactive only; `--non-interactive` returns an error |
 | `xr worktree add` | `--repo` is required (it prompts otherwise); add `--create` when the branch is new |
 | `xr worktree remove` / `prune --gone` | Pass `--yes`; `--force` additionally discards uncommitted changes |
-| Machine-readable output | `--json` on `xr repo list`, `xr search`, `xr worktree list` / `add` / `remove` / `prune`, and `xr diff file` / `pattern` / `history`; `--no-color` globally |
+| Machine-readable output | `--json` on `xr repo list`, `xr search`, `xr exec`, `xr worktree list` / `add` / `remove` / `prune`, and `xr diff file` / `pattern` / `history`; `--no-color` globally |
 
 See [`SKILL.md`](./SKILL.md) for agent-oriented detail.
 
@@ -166,19 +167,33 @@ proceed rather than be skipped.
 xr repo list
 ```
 
-### 3) Find a pattern across repositories
+### 3) Run one command in every repository
+
+```sh
+xr exec -- go test ./...
+xr exec -r api -r web -- make lint
+xr exec -j 8 -- git fetch --prune
+```
+
+The command runs directly, without a shell, so its arguments pass through
+unchanged; use `xr exec -- bash -c '...'` when you need a pipeline. Each
+repository runs with `XR_REPO_NAME` and `XR_REPO_PATH` set. `xr exec` exits
+non-zero if the command failed anywhere, and `--json` reports each repository's
+exit code with its captured output.
+
+### 4) Find a pattern across repositories
 
 ```sh
 xr search \"TODO\"
 ```
 
-### 4) Compare a file across repos / inspect drift
+### 5) Compare a file across repos / inspect drift
 
 ```sh
 xr diff file go.mod
 ```
 
-### 5) Work on one task across several repositories
+### 6) Work on one task across several repositories
 
 A worktree is identified by the pair (repository, branch) — git refuses to check out
 the same branch twice, so that pair is the smallest unit that can exist. One task
@@ -206,7 +221,7 @@ xr repo sync --update --prune               # let git notice the deleted branche
 xr worktree prune --gone                    # remove the worktrees left behind
 ```
 
-### 6) Use `--config` when you manage multiple workspaces
+### 7) Use `--config` when you manage multiple workspaces
 
 ```sh
 xr --config /path/to/workspace-a/repos.yaml repo list

@@ -35,6 +35,7 @@ Type is auto-inferred: local paths (`/…` or `~…`) → `symlink`; remote URLs
 | Fetch remote + match branches | `xr repo sync --update` |
 | Fetch with prune stale refs | `xr repo sync --update --prune` |
 | Import discoveries without prompt | `xr repo import --yes` |
+| Run a command in every repo | `xr exec -- go test ./...` |
 | Search across repos | `xr search PATTERN` |
 | Compare a file across repos | `xr diff file PATH` |
 | Worktree in selected repos | `xr worktree add BRANCH -r NAME -r NAME` |
@@ -94,6 +95,34 @@ xr repo import --dry-run                # preview discovered repos without writi
 - Bring all repos up to date with remote: `xr repo sync --update`
 - Switch symlink repos to their configured branch: `xr repo sync` (requires `branch` in config)
 - Bootstrap a config from an existing workspace on disk: `xr repo import --dry-run`
+
+---
+
+### Cross-repository execution (`xr exec`)
+
+```sh
+xr exec -- go test ./...           # run in every repo
+xr exec -r api -r web -- make lint # limit to specific repos
+xr exec -j 8 -- git fetch --prune  # 8 repos concurrently
+xr exec --json -- git status --porcelain
+xr exec -- bash -c 'cmd | other'   # pipelines need an explicit shell
+```
+
+The command runs directly, without a shell, so its arguments pass through
+unchanged — no quoting surprises. Each repository runs with `XR_REPO_NAME` and
+`XR_REPO_PATH` in its environment. Repositories missing from the workspace are
+skipped, not failed.
+
+`xr exec` exits non-zero if the command failed in any repository, so the exit
+status alone can gate a pipeline. `--json` reports each repository's exit code
+plus its captured stdout and stderr.
+
+**Agent use cases:**
+- Run the same check across the workspace and act on the failures:
+  `xr exec --json -- make test`
+- Apply a mechanical change everywhere: `xr exec -- bash -c 'sed -i ... file'`
+- Inspect state that needs a real command rather than a search:
+  `xr exec --json -- git rev-parse HEAD`
 
 ---
 
@@ -209,6 +238,7 @@ Useful when operating on multiple independent workspaces from the same working d
 |---------|----------|------------|
 | `xr repo list` | yes | no |
 | `xr search` | yes | no |
+| `xr exec` | yes | no |
 | `xr worktree list` / `add` / `remove` / `prune` | yes | no |
 | `xr diff file` / `pattern` / `history` | yes | yes |
 | `xr diff` (default git diff) | no | no |
