@@ -1,12 +1,15 @@
 package workspace
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/git"
@@ -154,12 +157,13 @@ func (w *Workspace) addClone(repo config.Repository, destPath string) error {
 	}
 
 	output.PrintStep(fmt.Sprintf("cloning %s from %s", repo.Name, repo.Source))
-	return w.cloneRepo(repo, destPath)
+	return w.cloneRepo(repo, destPath, os.Stdout, os.Stderr)
 }
 
-// cloneRepo clones the repository into destPath. It assumes destPath does not
-// exist yet and emits no progress output of its own beyond git's.
-func (w *Workspace) cloneRepo(repo config.Repository, destPath string) error {
+// cloneRepo clones the repository into destPath, streaming git's own progress
+// to stdout and stderr. It assumes destPath does not exist yet and emits no
+// progress output of its own.
+func (w *Workspace) cloneRepo(repo config.Repository, destPath string, stdout, stderr io.Writer) error {
 	if repo.Source == "" {
 		return fmt.Errorf("no source configured")
 	}
@@ -174,7 +178,7 @@ func (w *Workspace) cloneRepo(repo config.Repository, destPath string) error {
 	}
 	args = append(args, repo.Source, destPath)
 
-	if err := git.RunWithIO(w.Root, os.Stdout, os.Stderr, args...); err != nil {
+	if err := git.RunWithIO(w.Root, stdout, stderr, args...); err != nil {
 		return fmt.Errorf("git clone: %w", err)
 	}
 
@@ -358,6 +362,15 @@ type SyncOptions struct {
 	// ConfirmCheckout is an optional callback used to confirm switching branches.
 	// Return true to proceed with checkout, false to skip the repo.
 	ConfirmCheckout func(repo config.Repository, fromBranch, toBranch string) (bool, error)
+
+	// Jobs is the number of repositories synced concurrently. Values below 2 sync
+	// sequentially, streaming each repository's output as it happens. Above that,
+	// output is buffered per repository and flushed in configuration order, so the
+	// result reads the same but appears in bursts.
+	//
+	// Sync falls back to sequential whenever ConfirmDirty or ConfirmCheckout is
+	// set, since prompts read from stdin and must not interleave.
+	Jobs int
 }
 
 // SyncResult holds the outcome of a Sync operation.
@@ -367,57 +380,147 @@ type SyncResult struct {
 	Failed  int
 }
 
+// record counts a repository outcome.
+func (r *SyncResult) record(skipped bool, err error) {
+	switch {
+	case err != nil:
+		r.Failed++
+	case skipped:
+		r.Skipped++
+	default:
+		r.Synced++
+	}
+}
+
 // Sync synchronizes repositories to match repos.yaml configuration.
 // For each repository, it switches to the configured branch and optionally
-// fetches/pulls latest changes.
+// fetches/pulls latest changes. Repositories are synced concurrently when
+// opts.Jobs allows it; see SyncOptions.Jobs.
 func (w *Workspace) Sync(repoNames []string, opts SyncOptions) (*SyncResult, error) {
 	wsDir := filepath.Join(w.Root, w.Config.Workspace)
-	result := &SyncResult{}
 
+	targets := make([]config.Repository, 0, len(w.Config.Repositories))
 	for _, repo := range w.Config.Repositories {
 		if len(repoNames) > 0 && !slices.Contains(repoNames, repo.Name) {
 			continue
 		}
-
-		destPath := filepath.Join(wsDir, repo.Path)
-		var err error
-		var skipped bool
-		if repo.IsSymlink() {
-			skipped, err = w.syncSymlink(repo, destPath, opts)
-		} else {
-			skipped, err = w.syncClone(repo, destPath, opts)
-		}
-		if err != nil {
-			output.PrintSyncFail(fmt.Sprintf("%v", err))
-			result.Failed++
-		} else if skipped {
-			result.Skipped++
-		} else {
-			result.Synced++
-		}
+		targets = append(targets, repo)
 	}
 
+	if w.syncJobs(opts, len(targets)) > 1 {
+		return w.syncConcurrent(targets, wsDir, opts), nil
+	}
+
+	result := &SyncResult{}
+	p := output.StdoutSyncPrinter()
+	for _, repo := range targets {
+		skipped, err := w.syncRepo(repo, wsDir, opts, p)
+		result.record(skipped, err)
+	}
 	return result, nil
 }
 
-func (w *Workspace) syncSymlink(repo config.Repository, destPath string, opts SyncOptions) (bool, error) {
-	output.PrintSyncHeader(repo.Name, "symlink")
+// syncJobs resolves the effective worker count for n repositories.
+func (w *Workspace) syncJobs(opts SyncOptions, n int) int {
+	// Prompts read from stdin, so they cannot run from concurrent workers.
+	if opts.ConfirmDirty != nil || opts.ConfirmCheckout != nil {
+		return 1
+	}
+	jobs := opts.Jobs
+	if jobs < 1 {
+		jobs = 1
+	}
+	if jobs > n {
+		jobs = n
+	}
+	return jobs
+}
+
+// syncRepo syncs one repository, reporting failures through p. It returns
+// whether the repository was skipped along with any error, both already
+// reflected in the printed output.
+func (w *Workspace) syncRepo(repo config.Repository, wsDir string, opts SyncOptions, p *output.SyncPrinter) (bool, error) {
+	destPath := filepath.Join(wsDir, repo.Path)
+
+	var skipped bool
+	var err error
+	if repo.IsSymlink() {
+		skipped, err = w.syncSymlink(repo, destPath, opts, p)
+	} else {
+		skipped, err = w.syncClone(repo, destPath, opts, p)
+	}
+	if err != nil {
+		p.Fail(fmt.Sprintf("%v", err))
+	}
+	return skipped, err
+}
+
+// syncConcurrent syncs repositories using jobs workers. Each repository renders
+// into its own buffer, and buffers are flushed in configuration order so the
+// output is identical to a sequential run.
+func (w *Workspace) syncConcurrent(targets []config.Repository, wsDir string, opts SyncOptions) *SyncResult {
+	type slot struct {
+		buf     bytes.Buffer
+		skipped bool
+		err     error
+		done    chan struct{}
+	}
+
+	slots := make([]*slot, len(targets))
+	for i := range slots {
+		slots[i] = &slot{done: make(chan struct{})}
+	}
+
+	queue := make(chan int)
+	go func() {
+		for i := range targets {
+			queue <- i
+		}
+		close(queue)
+	}()
+
+	var wg sync.WaitGroup
+	for range w.syncJobs(opts, len(targets)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range queue {
+				s := slots[i]
+				s.skipped, s.err = w.syncRepo(targets[i], wsDir, opts, output.NewSyncPrinter(&s.buf))
+				close(s.done)
+			}
+		}()
+	}
+
+	result := &SyncResult{}
+	for _, s := range slots {
+		<-s.done
+		_, _ = io.Copy(os.Stdout, &s.buf)
+		result.record(s.skipped, s.err)
+	}
+	wg.Wait()
+
+	return result
+}
+
+func (w *Workspace) syncSymlink(repo config.Repository, destPath string, opts SyncOptions, p *output.SyncPrinter) (bool, error) {
+	p.Header(repo.Name, "symlink")
 
 	info, err := os.Lstat(destPath)
 	switch {
 	case err != nil && !opts.CloneMissing:
-		output.PrintSyncSkip("missing (use --clone-missing or run 'xr init')")
+		p.Skip("missing (use --clone-missing or run 'xr init')")
 		return true, nil
 	case err != nil && opts.DryRun:
-		output.PrintSyncAction(fmt.Sprintf("preview: would link to %s", expandTilde(repo.Source)))
-		output.PrintSyncSkip("preview")
+		p.Action(fmt.Sprintf("preview: would link to %s", expandTilde(repo.Source)))
+		p.Skip("preview")
 		return true, nil
 	case err != nil:
-		output.PrintSyncAction(fmt.Sprintf("linking to %s", expandTilde(repo.Source)))
+		p.Action(fmt.Sprintf("linking to %s", expandTilde(repo.Source)))
 		if err := createSymlink(repo, destPath); err != nil {
 			return false, err
 		}
-		output.PrintSyncOK("symlink created")
+		p.OK("symlink created")
 	default:
 		if info.Mode()&os.ModeSymlink == 0 {
 			return false, fmt.Errorf("%s exists but is not a symlink", destPath)
@@ -432,17 +535,17 @@ func (w *Workspace) syncSymlink(repo config.Repository, destPath string, opts Sy
 
 	// Check if the target is a git repository
 	if _, err := os.Stat(filepath.Join(realPath, ".git")); os.IsNotExist(err) {
-		output.PrintSyncSkip("not a git repository")
+		p.Skip("not a git repository")
 		return true, nil
 	}
 
 	// No branch configured — nothing to sync
 	if repo.Branch == "" && !opts.Fetch && !opts.Pull {
-		output.PrintSyncSkip("no branch configured")
+		p.Skip("no branch configured")
 		return true, nil
 	}
 
-	skipped, err := w.syncGitRepo(repo, realPath, opts)
+	skipped, err := w.syncGitRepo(repo, realPath, opts, p)
 	if err != nil {
 		return false, err
 	}
@@ -450,30 +553,32 @@ func (w *Workspace) syncSymlink(repo config.Repository, destPath string, opts Sy
 	return skipped, nil
 }
 
-func (w *Workspace) syncClone(repo config.Repository, destPath string, opts SyncOptions) (bool, error) {
-	output.PrintSyncHeader(repo.Name, "clone")
+func (w *Workspace) syncClone(repo config.Repository, destPath string, opts SyncOptions, p *output.SyncPrinter) (bool, error) {
+	p.Header(repo.Name, "clone")
 
 	if _, err := os.Stat(destPath); os.IsNotExist(err) {
 		if !opts.CloneMissing {
-			output.PrintSyncSkip("missing (use --clone-missing or run 'xr init')")
+			p.Skip("missing (use --clone-missing or run 'xr init')")
 			return true, nil
 		}
 		if opts.DryRun {
-			output.PrintSyncAction(fmt.Sprintf("preview: would clone %s", repo.Source))
-			output.PrintSyncSkip("preview")
+			p.Action(fmt.Sprintf("preview: would clone %s", repo.Source))
+			p.Skip("preview")
 			return true, nil
 		}
-		output.PrintSyncAction(fmt.Sprintf("cloning from %s", repo.Source))
-		if err := w.cloneRepo(repo, destPath); err != nil {
+		p.Action(fmt.Sprintf("cloning from %s", repo.Source))
+		// git's clone progress joins the repository's own output, so it stays with
+		// this repository's block when workers run concurrently.
+		if err := w.cloneRepo(repo, destPath, p.Writer(), p.Writer()); err != nil {
 			return false, err
 		}
 		// A fresh clone is already on the configured branch and up to date, so
 		// there is nothing left for syncGitRepo to do.
-		output.PrintSyncOK("cloned")
+		p.OK("cloned")
 		return false, nil
 	}
 
-	skipped, err := w.syncGitRepo(repo, destPath, opts)
+	skipped, err := w.syncGitRepo(repo, destPath, opts, p)
 	if err != nil {
 		return false, err
 	}
@@ -482,7 +587,7 @@ func (w *Workspace) syncClone(repo config.Repository, destPath string, opts Sync
 }
 
 // syncGitRepo performs fetch, checkout, and pull on a git repository directory.
-func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOptions) (bool, error) {
+func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOptions, p *output.SyncPrinter) (bool, error) {
 	currentBranch := gitCurrentBranch(dir)
 	dirty, err := gitIsDirty(dir)
 	if err != nil {
@@ -498,7 +603,7 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 			return false, err
 		}
 		if !ok {
-			output.PrintSyncSkip("checkout skipped")
+			p.Skip("checkout skipped")
 			return true, nil
 		}
 	}
@@ -519,11 +624,11 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 				return false, err
 			}
 			if !ok {
-				output.PrintSyncSkip("dirty; skipped")
+				p.Skip("dirty; skipped")
 				return true, nil
 			}
 		} else {
-			output.PrintSyncSkip("dirty; skipped (use --allow-dirty)")
+			p.Skip("dirty; skipped (use --allow-dirty)")
 			return true, nil
 		}
 	}
@@ -531,13 +636,13 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 	if opts.DryRun {
 		if opts.Fetch {
 			if opts.Prune {
-				output.PrintSyncAction("preview: would fetch origin --prune")
+				p.Action("preview: would fetch origin --prune")
 			} else {
-				output.PrintSyncAction("preview: would fetch origin")
+				p.Action("preview: would fetch origin")
 			}
 		}
 		if needsCheckout {
-			output.PrintSyncAction(fmt.Sprintf("preview: would checkout %s", repo.Branch))
+			p.Action(fmt.Sprintf("preview: would checkout %s", repo.Branch))
 		}
 		if opts.Pull {
 			branch := repo.Branch
@@ -545,12 +650,12 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 				branch = currentBranch
 			}
 			if branch == "" {
-				output.PrintSyncFail("preview: could not determine branch for pull")
+				p.Fail("preview: could not determine branch for pull")
 			} else {
-				output.PrintSyncAction(fmt.Sprintf("preview: would pull origin/%s", branch))
+				p.Action(fmt.Sprintf("preview: would pull origin/%s", branch))
 			}
 		}
-		output.PrintSyncSkip("preview")
+		p.Skip("preview")
 		return true, nil
 	}
 
@@ -560,7 +665,7 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 		if opts.Prune {
 			args = append(args, "--prune")
 		}
-		output.PrintSyncAction("fetching from origin")
+		p.Action("fetching from origin")
 		if err := runGitQuiet(dir, args...); err != nil {
 			return false, fmt.Errorf("fetch: %w", err)
 		}
@@ -572,9 +677,9 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 			return false, fmt.Errorf("create-branch-if-missing requires fetch")
 		}
 		if currentBranch == repo.Branch {
-			output.PrintSyncOK(fmt.Sprintf("already on %s", repo.Branch))
+			p.OK(fmt.Sprintf("already on %s", repo.Branch))
 		} else {
-			output.PrintSyncAction(fmt.Sprintf("switching %s → %s", currentBranch, repo.Branch))
+			p.Action(fmt.Sprintf("switching %s → %s", currentBranch, repo.Branch))
 			if err := runGitQuiet(dir, "checkout", repo.Branch); err != nil {
 				remoteExists, rerr := gitRefExists(dir, "refs/remotes/origin/"+repo.Branch)
 				if rerr != nil {
@@ -599,7 +704,7 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 					return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
 				}
 			}
-			output.PrintSyncOK(fmt.Sprintf("switched to %s", repo.Branch))
+			p.OK(fmt.Sprintf("switched to %s", repo.Branch))
 		}
 	}
 
@@ -610,13 +715,13 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 			branch = gitCurrentBranch(dir)
 		}
 		if branch == "" {
-			output.PrintSyncFail("could not determine branch for pull")
+			p.Fail("could not determine branch for pull")
 		} else {
-			output.PrintSyncAction(fmt.Sprintf("pulling origin/%s", branch))
+			p.Action(fmt.Sprintf("pulling origin/%s", branch))
 			if err := runGitQuiet(dir, "pull", "origin", branch); err != nil {
 				return false, fmt.Errorf("pull origin/%s: %w", branch, err)
 			}
-			output.PrintSyncOK("up to date")
+			p.OK("up to date")
 		}
 	}
 

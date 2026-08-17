@@ -25,6 +25,7 @@ Sync options:
   --update         fetch and pull from remote
   --prune          prune deleted remote branches during fetch (requires --update)
   --clone-missing  clone repositories missing from the workspace
+  --jobs N / -j N  sync N repositories concurrently
   --dry-run        preview only
 
 Always switches to the branch in repos.yaml.
@@ -36,6 +37,12 @@ makes an unattended bootstrap from repos.yaml possible without interactive xr in
 
 Exits non-zero when any repository fails to sync. Skipped repositories are not
 failures, so a run that only skips still exits 0.
+
+--jobs syncs several repositories at once, which mainly helps --update and
+--clone-missing on large workspaces. Output stays grouped and ordered by
+repository, but each block appears only once that repository finishes. Because
+concurrent workers cannot share stdin, --jobs above 1 disables prompts: dirty
+repositories are skipped unless --allow-dirty or --yes is given.
 
 Without arguments, syncs all repositories. Specify repo names to sync only those.
 
@@ -53,7 +60,10 @@ Examples:
   xr repo sync --update --prune
 
   # Bootstrap a workspace unattended (CI / agents)
-  xr repo sync --clone-missing --update --non-interactive --allow-dirty`,
+  xr repo sync --clone-missing --update --non-interactive --allow-dirty
+
+  # Bootstrap a large workspace with 8 repositories in flight
+  xr repo sync --clone-missing --update -j 8 --allow-dirty`,
 	ValidArgsFunction: shellcomp.CompleteRepoNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runSync(cmd, args)
@@ -82,6 +92,11 @@ func runSync(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// Concurrent workers cannot share stdin, so --jobs opts out of prompting the
+	// same way --non-interactive does.
+	if syncJobs > 1 {
+		shouldPrompt = false
+	}
 
 	proceedAllDirty := false
 	opts := workspace.SyncOptions{
@@ -93,33 +108,34 @@ func runSync(cmd *cobra.Command, args []string) error {
 		AllowDirty:            syncDirty,
 		CreateBranchIfMissing: syncCreateBranchIfMissing,
 		CloneMissing:          syncCloneMissing,
+		Jobs:                  syncJobs,
 	}
 	yesFlag := interactive.Yes(cmd)
-	if !opts.AllowDirty {
-		if yesFlag {
-			opts.ConfirmDirty = func(_ config.Repository, _ string) (bool, error) {
+	// --yes proceeds on every dirty repository, which is what --allow-dirty does.
+	// Expressing it that way rather than as an always-true callback keeps the
+	// options free of prompts, so --jobs can still run workers concurrently.
+	if yesFlag {
+		opts.AllowDirty = true
+	}
+	if !opts.AllowDirty && shouldPrompt {
+		opts.ConfirmDirty = func(repo config.Repository, reason string) (bool, error) {
+			if proceedAllDirty {
 				return true, nil
 			}
-		} else if shouldPrompt {
-			opts.ConfirmDirty = func(repo config.Repository, reason string) (bool, error) {
-				if proceedAllDirty {
-					return true, nil
-				}
-				choice, err := promptSelect(nil, fmt.Sprintf("%s: %s", repo.Name, reason), []string{"Skip", "Proceed", "Proceed all"}, 10, false)
-				if err != nil {
-					return false, err
-				}
-				switch choice {
-				case 0:
-					return false, nil
-				case 1:
-					return true, nil
-				case 2:
-					proceedAllDirty = true
-					return true, nil
-				default:
-					return false, nil
-				}
+			choice, err := promptSelect(nil, fmt.Sprintf("%s: %s", repo.Name, reason), []string{"Skip", "Proceed", "Proceed all"}, 10, false)
+			if err != nil {
+				return false, err
+			}
+			switch choice {
+			case 0:
+				return false, nil
+			case 1:
+				return true, nil
+			case 2:
+				proceedAllDirty = true
+				return true, nil
+			default:
+				return false, nil
 			}
 		}
 	}
