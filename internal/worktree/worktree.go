@@ -49,7 +49,7 @@ func (m *Manager) reposDir() string {
 func (m *Manager) RepoDir(repo config.Repository) (string, error) {
 	path := filepath.Join(m.reposDir(), repo.Path)
 	if _, err := os.Lstat(path); err != nil {
-		return "", fmt.Errorf("missing in workspace (run 'xr init'): %s", path)
+		return "", fmt.Errorf("missing in workspace (run 'xr repo sync --clone-missing'): %s", path)
 	}
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {

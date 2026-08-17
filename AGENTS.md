@@ -24,6 +24,7 @@ xr/
 │   ├── search/              # Cross-repo search (ripgrep + fallback)
 │   ├── structure/           # Directory tree analysis and display
 │   ├── output/              # Human/JSON output helpers and result models
+│   ├── exitcode/            # Silent exit-status errors for self-reporting commands
 │   └── diff/                # File comparison and git history search
 ├── go.mod                   # Module: github.com/kohbis/xr, Go 1.25.7
 ├── Makefile                 # Build, test, lint, release targets
@@ -156,10 +157,10 @@ When adding/changing commands that prompt users, provide explicit non-interactiv
 - Global `--non-interactive` and `--yes` on the root command; `internal/interactive` helpers read them via `ShouldPrompt` / `Yes`.
 - `xr repo remove`: repo name(s) and `--force` or `--yes` required when not prompting.
 - `xr repo import`: `--yes` applies without prompt; `--non-interactive` without `--yes` returns an error; `--dry-run` previews.
-- `xr repo sync`: no dirty/checkout prompts when `--non-interactive` or stdin is not a TTY; use `--allow-dirty` when appropriate.
+- `xr repo sync`: no dirty/checkout prompts when `--non-interactive` or stdin is not a TTY; use `--allow-dirty` when appropriate. `--clone-missing` materializes repositories absent from the workspace (clone repos cloned, symlink repos linked), which is the unattended alternative to the interactive `xr init`. Sync exits non-zero when any repository fails, via `internal/exitcode` so the per-repo summary stays the only output.
 - `xr worktree add`: prompts for repositories when `--repo` is omitted; `--non-interactive` requires `--repo`.
 - `xr worktree remove` / `prune --gone`: `--yes` confirms. Note `--force` here keeps git's meaning (discard uncommitted changes), unlike `xr repo remove --force`.
-- `xr init`: interactive only; `--non-interactive` returns an error.
+- `xr init`: interactive only; `--non-interactive` returns an error (use `xr repo sync --clone-missing`).
 
 ### JSON/report output conventions
 

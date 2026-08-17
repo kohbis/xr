@@ -95,6 +95,7 @@ If you want the full surface area, see `xr --help` and `xr <cmd> --help`.
 | Fetch remote + match branches | `xr repo sync --update` |
 | Fetch with prune stale refs | `xr repo sync --update --prune` |
 | Fetch, pull | `xr repo sync --update` |
+| Bootstrap without prompts | `xr repo sync --clone-missing --update` |
 | Import discoveries without prompt | `xr repo import --yes` |
 | Search across repos | `xr search PATTERN` |
 | Compare a file across repos | `xr diff file PATH` |
@@ -124,6 +125,7 @@ Global flags: `--non-interactive` (disable prompts; fail instead of blocking) an
 | `xr repo remove` | Pass repo name(s) and `--force` or `--yes` |
 | `xr repo import` | `xr repo import --yes` to apply; `--dry-run` to inspect only |
 | `xr repo sync` | Runs by default (often with `--update`); use `--allow-dirty` when dirty repos should proceed without prompts |
+| Bootstrap a workspace | `xr repo sync --clone-missing --update` — materializes missing repos without the interactive `xr init` |
 | `xr init` | Interactive only; `--non-interactive` returns an error |
 | `xr worktree add` | `--repo` is required (it prompts otherwise); add `--create` when the branch is new |
 | `xr worktree remove` / `prune --gone` | Pass `--yes`; `--force` additionally discards uncommitted changes |
@@ -138,6 +140,18 @@ cp repos.yaml.example repos.yaml
 ${EDITOR:-vim} repos.yaml
 xr init
 ```
+
+`xr init` is interactive. For CI or agents, use `xr repo sync --clone-missing`
+instead: it clones repositories missing from the workspace and recreates missing
+symlinks, so a committed `repos.yaml` can be materialized unattended.
+
+```sh
+xr repo sync --clone-missing --update --non-interactive --allow-dirty
+xr repo sync --clone-missing --dry-run    # preview what would be materialized
+```
+
+`xr repo sync` exits non-zero when any repository fails, so a failed clone or
+fetch stops a CI pipeline. Skipped repositories are not failures.
 
 ### 2) Inspect repository status across the workspace
 

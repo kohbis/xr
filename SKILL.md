@@ -28,6 +28,7 @@ Type is auto-inferred: local paths (`/…` or `~…`) → `symlink`; remote URLs
 
 | Goal | Command |
 |------|---------|
+| Bootstrap a workspace unattended | `xr repo sync --clone-missing --update` |
 | Match branches | `xr repo sync` |
 | Preview sync (no changes) | `xr repo sync --dry-run` |
 | Fetch remote + match branches | `xr repo sync --update` |
@@ -73,6 +74,7 @@ xr repo sync --dry-run                  # preview without changes
 xr repo sync <name> [<name>...]         # sync specific repos only
 xr repo sync --update                   # fetch, switch branch, and pull latest
 xr repo sync --update --prune           # fetch with prune, switch, and pull
+xr repo sync --clone-missing            # clone missing repos / recreate missing symlinks
 xr repo sync --allow-dirty              # skip dirty-repo prompts (recommended with --non-interactive)
 xr repo sync --create-branch-if-missing --update  # create local branch if missing (requires --update)
 xr repo import                          # discover repos in workspace dir and add to repos.yaml
@@ -81,6 +83,9 @@ xr repo import --dry-run                # preview discovered repos without writi
 ```
 
 **Agent use cases:**
+- Materialize a workspace from a committed `repos.yaml` without prompts:
+  `xr repo sync --clone-missing --update` (`xr init` is interactive and cannot be used here).
+  `sync` exits non-zero if any repository fails, so the exit status is enough to gate a pipeline.
 - Enumerate the workspace before operating: `xr repo list`
 - Add a newly created repo to the workspace: `xr repo add`
 - Ensure all repos are on their configured branches: `xr repo sync`
@@ -221,9 +226,10 @@ Global flags:
 | `xr repo remove` | `xr repo remove NAME --yes` (or `--force`) |
 | `xr repo import` | `xr repo import --yes` to apply; `--dry-run` to inspect only |
 | `xr repo sync` | Runs by default; add `--allow-dirty` when dirty repos should proceed without prompts |
+| Bootstrap a workspace | `xr repo sync --clone-missing --update`; `--dry-run` previews what would be materialized |
 | `xr worktree add` | `-r` is required; add `--create` for a new branch |
 | `xr worktree remove` / `prune --gone` | Pass `--yes`; `--force` additionally discards uncommitted changes |
-| `xr init` | Interactive only; `--non-interactive` returns an error |
+| `xr init` | Interactive only; `--non-interactive` returns an error — use `xr repo sync --clone-missing` instead |
 
 Tips:
 
