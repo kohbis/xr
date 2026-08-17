@@ -96,6 +96,7 @@ If you want the full surface area, see `xr --help` and `xr <cmd> --help`.
 | Fetch with prune stale refs | `xr repo sync --update --prune` |
 | Fetch, pull | `xr repo sync --update` |
 | Bootstrap without prompts | `xr repo sync --clone-missing --update` |
+| Sync many repos in parallel | `xr repo sync --update -j 8` |
 | Import discoveries without prompt | `xr repo import --yes` |
 | Search across repos | `xr search PATTERN` |
 | Compare a file across repos | `xr diff file PATH` |
@@ -152,6 +153,12 @@ xr repo sync --clone-missing --dry-run    # preview what would be materialized
 
 `xr repo sync` exits non-zero when any repository fails, so a failed clone or
 fetch stops a CI pipeline. Skipped repositories are not failures.
+
+On a large workspace, `-j` / `--jobs` syncs several repositories at once. Output
+stays grouped and ordered by repository, but each block appears only once that
+repository finishes. Concurrent workers cannot share stdin, so `-j` above 1
+disables prompts — pass `--allow-dirty` or `--yes` if dirty repositories should
+proceed rather than be skipped.
 
 ### 2) Inspect repository status across the workspace
 

@@ -13,6 +13,7 @@ var (
 	syncCreateBranchIfMissing bool
 	syncUpdate                bool
 	syncCloneMissing          bool
+	syncJobs                  int
 )
 
 func effectiveSyncNetwork() (fetch, pull bool) {
@@ -30,6 +31,9 @@ func validateSyncFlags(fetch bool) error {
 	if syncCreateBranchIfMissing && !fetch {
 		return fmt.Errorf("--create-branch-if-missing requires --update")
 	}
+	if syncJobs < 1 {
+		return fmt.Errorf("--jobs must be at least 1")
+	}
 	return nil
 }
 
@@ -40,4 +44,5 @@ func registerSyncFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&syncDirty, "allow-dirty", false, "allow syncing repos with uncommitted changes without prompting")
 	cmd.Flags().BoolVar(&syncCreateBranchIfMissing, "create-branch-if-missing", false, "create local branch when missing (from current HEAD)")
 	cmd.Flags().BoolVar(&syncCloneMissing, "clone-missing", false, "clone repositories missing from the workspace and recreate missing symlinks")
+	cmd.Flags().IntVarP(&syncJobs, "jobs", "j", 1, "number of repositories to sync concurrently (disables prompts above 1)")
 }

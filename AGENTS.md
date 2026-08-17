@@ -138,6 +138,7 @@ Type inference in `normalize()`: local paths (starting with `/` or `~`) default 
 
 Use helpers from `internal/output` for consistent terminal formatting and machine-readable output. The package now provides:
 - ANSI-colored output helpers for human-readable CLI output
+- `SyncPrinter`, a writer-backed renderer for sync progress; the package-level `PrintSync*` helpers are thin wrappers writing to stdout
 - shared result models (`CommandResult`, `RepoResult`) for JSON/report output
 - JSON helpers (`PrintJSON`, `WriteJSONFile`) for command output and file reports
 
@@ -157,7 +158,7 @@ When adding/changing commands that prompt users, provide explicit non-interactiv
 - Global `--non-interactive` and `--yes` on the root command; `internal/interactive` helpers read them via `ShouldPrompt` / `Yes`.
 - `xr repo remove`: repo name(s) and `--force` or `--yes` required when not prompting.
 - `xr repo import`: `--yes` applies without prompt; `--non-interactive` without `--yes` returns an error; `--dry-run` previews.
-- `xr repo sync`: no dirty/checkout prompts when `--non-interactive` or stdin is not a TTY; use `--allow-dirty` when appropriate. `--clone-missing` materializes repositories absent from the workspace (clone repos cloned, symlink repos linked), which is the unattended alternative to the interactive `xr init`. Sync exits non-zero when any repository fails, via `internal/exitcode` so the per-repo summary stays the only output.
+- `xr repo sync`: no dirty/checkout prompts when `--non-interactive` or stdin is not a TTY; use `--allow-dirty` when appropriate. `--clone-missing` materializes repositories absent from the workspace (clone repos cloned, symlink repos linked), which is the unattended alternative to the interactive `xr init`. Sync exits non-zero when any repository fails, via `internal/exitcode` so the per-repo summary stays the only output. `--jobs`/`-j` syncs repositories concurrently; each worker renders into its own `output.SyncPrinter` buffer and buffers are flushed in configuration order, so concurrency never reorders output. Values above 1 disable prompts, since workers cannot share stdin.
 - `xr worktree add`: prompts for repositories when `--repo` is omitted; `--non-interactive` requires `--repo`.
 - `xr worktree remove` / `prune --gone`: `--yes` confirms. Note `--force` here keeps git's meaning (discard uncommitted changes), unlike `xr repo remove --force`.
 - `xr init`: interactive only; `--non-interactive` returns an error (use `xr repo sync --clone-missing`).

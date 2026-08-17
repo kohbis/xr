@@ -3,6 +3,7 @@ package output
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 )
@@ -131,29 +132,77 @@ func PrintDiffLine(line string) {
 	}
 }
 
+// SyncPrinter renders sync progress to a writer. Concurrent sync workers each
+// render into their own buffer, so the combined output can be flushed in
+// repository order and read exactly like a sequential run.
+type SyncPrinter struct {
+	w io.Writer
+}
+
+// NewSyncPrinter returns a printer writing to w.
+func NewSyncPrinter(w io.Writer) *SyncPrinter {
+	return &SyncPrinter{w: w}
+}
+
+// Writer returns the underlying writer, for subprocesses that stream their own
+// output (git clone progress, for example).
+func (p *SyncPrinter) Writer() io.Writer {
+	return p.w
+}
+
+// Header prints a repo header for sync operations.
+func (p *SyncPrinter) Header(name, repoType string) {
+	_, _ = fmt.Fprintf(p.w, "\n%s%s[%s]%s %s%s%s\n", c(colorBold), c(colorCyan), repoType, c(colorReset), c(colorBold), name, c(colorReset))
+}
+
+// Skip prints a skip message for repos that don't need syncing.
+func (p *SyncPrinter) Skip(reason string) {
+	_, _ = fmt.Fprintf(p.w, "  %s⊘ %s%s\n", c(colorDim), reason, c(colorReset))
+}
+
+// OK prints a success message for a sync step.
+func (p *SyncPrinter) OK(msg string) {
+	_, _ = fmt.Fprintf(p.w, "  %s✓ %s%s\n", c(colorGreen), msg, c(colorReset))
+}
+
+// Action prints an action being performed.
+func (p *SyncPrinter) Action(msg string) {
+	_, _ = fmt.Fprintf(p.w, "  %s→%s %s\n", c(colorBlue), c(colorReset), msg)
+}
+
+// Fail prints a failure message for a sync step.
+func (p *SyncPrinter) Fail(msg string) {
+	_, _ = fmt.Fprintf(p.w, "  %s✗ %s%s\n", c(colorRed), msg, c(colorReset))
+}
+
+// StdoutSyncPrinter returns a printer writing straight to stdout.
+func StdoutSyncPrinter() *SyncPrinter {
+	return NewSyncPrinter(os.Stdout)
+}
+
 // PrintSyncHeader prints a repo header for sync operations.
 func PrintSyncHeader(name, repoType string) {
-	fmt.Printf("\n%s%s[%s]%s %s%s%s\n", c(colorBold), c(colorCyan), repoType, c(colorReset), c(colorBold), name, c(colorReset))
+	StdoutSyncPrinter().Header(name, repoType)
 }
 
 // PrintSyncSkip prints a skip message for repos that don't need syncing.
 func PrintSyncSkip(reason string) {
-	fmt.Printf("  %s⊘ %s%s\n", c(colorDim), reason, c(colorReset))
+	StdoutSyncPrinter().Skip(reason)
 }
 
 // PrintSyncOK prints a success message for a sync step.
 func PrintSyncOK(msg string) {
-	fmt.Printf("  %s✓ %s%s\n", c(colorGreen), msg, c(colorReset))
+	StdoutSyncPrinter().OK(msg)
 }
 
 // PrintSyncAction prints an action being performed.
 func PrintSyncAction(msg string) {
-	fmt.Printf("  %s→%s %s\n", c(colorBlue), c(colorReset), msg)
+	StdoutSyncPrinter().Action(msg)
 }
 
 // PrintSyncFail prints a failure message for a sync step.
 func PrintSyncFail(msg string) {
-	fmt.Printf("  %s✗ %s%s\n", c(colorRed), msg, c(colorReset))
+	StdoutSyncPrinter().Fail(msg)
 }
 
 // PrintActionSummary prints the final summary of a multi-repository operation.

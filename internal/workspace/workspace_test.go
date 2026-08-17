@@ -1,6 +1,9 @@
 package workspace
 
 import (
+	"bytes"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -856,4 +859,127 @@ func TestSyncSymlink_CloneMissingRecreatesLink(t *testing.T) {
 	if got != target {
 		t.Errorf("symlink target = %q, want %q", got, target)
 	}
+}
+
+func TestSyncJobs(t *testing.T) {
+	ws := New(t.TempDir(), &config.Config{Workspace: "./repos"})
+	confirm := func(_ config.Repository, _ string) (bool, error) { return true, nil }
+
+	tests := []struct {
+		name string
+		opts SyncOptions
+		n    int
+		want int
+	}{
+		{name: "unset means sequential", opts: SyncOptions{}, n: 5, want: 1},
+		{name: "zero means sequential", opts: SyncOptions{Jobs: 0}, n: 5, want: 1},
+		{name: "negative means sequential", opts: SyncOptions{Jobs: -3}, n: 5, want: 1},
+		{name: "capped at repo count", opts: SyncOptions{Jobs: 8}, n: 3, want: 3},
+		{name: "used as given", opts: SyncOptions{Jobs: 4}, n: 10, want: 4},
+		{name: "prompts force sequential", opts: SyncOptions{Jobs: 8, ConfirmDirty: confirm}, n: 5, want: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ws.syncJobs(tt.opts, tt.n); got != tt.want {
+				t.Fatalf("syncJobs() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSyncConcurrent_OutputMatchesSequential is the core guarantee of --jobs:
+// concurrency must not change what the user sees.
+func TestSyncConcurrent_OutputMatchesSequential(t *testing.T) {
+	sources := make([]string, 6)
+	for i := range sources {
+		sources[i] = seedGitRepo(t, filepath.Join(t.TempDir(), fmt.Sprintf("origin%d", i)))
+	}
+
+	run := func(jobs int) (string, SyncResult) {
+		repos := make([]config.Repository, len(sources))
+		for i, src := range sources {
+			repos[i] = config.Repository{
+				Name:   fmt.Sprintf("repo%d", i),
+				Path:   fmt.Sprintf("repo%d", i),
+				Type:   config.RepoTypeClone,
+				Source: src,
+				Branch: "main",
+			}
+		}
+		// One repository has no source, so a failure is part of the comparison.
+		repos = append(repos, config.Repository{Name: "broken", Path: "broken", Type: config.RepoTypeClone})
+
+		ws := New(t.TempDir(), &config.Config{Workspace: "./repos", Repositories: repos})
+
+		var result *SyncResult
+		out := captureStdout(t, func() {
+			var err error
+			result, err = ws.Sync(nil, SyncOptions{CloneMissing: true, Jobs: jobs})
+			if err != nil {
+				t.Errorf("Sync() error = %v", err)
+			}
+		})
+		return out, *result
+	}
+
+	seqOut, seqResult := run(1)
+	parOut, parResult := run(4)
+
+	// git clone writes absolute paths, so compare the xr-rendered lines only.
+	if got, want := syncLines(parOut), syncLines(seqOut); got != want {
+		t.Errorf("concurrent output differs from sequential\n--- sequential ---\n%s\n--- concurrent ---\n%s", want, got)
+	}
+	if parResult != seqResult {
+		t.Errorf("concurrent result = %+v, sequential = %+v", parResult, seqResult)
+	}
+	if seqResult.Synced != len(sources) || seqResult.Failed != 1 {
+		t.Fatalf("fixture did not exercise both paths: %+v", seqResult)
+	}
+}
+
+// syncLines keeps the lines xr itself renders, dropping git's clone chatter and
+// the temp-dir paths that differ between runs.
+func syncLines(out string) string {
+	var kept []string
+	for _, line := range strings.Split(out, "\n") {
+		switch {
+		case strings.HasPrefix(line, "["), strings.HasPrefix(line, "  ✓"), strings.HasPrefix(line, "  ⊘"):
+			kept = append(kept, line)
+		case strings.HasPrefix(line, "  →"):
+			// "cloning from <tmpdir>" differs per run; keep only the verb.
+			if i := strings.Index(line, " from "); i >= 0 {
+				line = line[:i+len(" from ")]
+			}
+			kept = append(kept, line)
+		case strings.HasPrefix(line, "  ✗"):
+			kept = append(kept, line)
+		}
+	}
+	return strings.Join(kept, "\n")
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	orig := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+
+	done := make(chan string)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		done <- buf.String()
+	}()
+
+	fn()
+
+	os.Stdout = orig
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return <-done
 }
