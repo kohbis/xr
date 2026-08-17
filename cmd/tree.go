@@ -40,7 +40,7 @@ var treeCmd = &cobra.Command{
 
 			repoPath := filepath.Join(wsDir, repo.Path)
 			if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-				output.PrintWarning(fmt.Sprintf("repo %s not found at %s (run 'xr init' first)", repo.Name, repoPath))
+				output.PrintWarning(fmt.Sprintf("repo %s not found at %s (run 'xr repo sync --clone-missing' or 'xr init' first)", repo.Name, repoPath))
 				continue
 			}
 

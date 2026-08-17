@@ -12,6 +12,7 @@ var (
 	syncDirty                 bool
 	syncCreateBranchIfMissing bool
 	syncUpdate                bool
+	syncCloneMissing          bool
 )
 
 func effectiveSyncNetwork() (fetch, pull bool) {
@@ -38,4 +39,5 @@ func registerSyncFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&syncDryRun, "dry-run", false, "preview only, perform no git operations")
 	cmd.Flags().BoolVar(&syncDirty, "allow-dirty", false, "allow syncing repos with uncommitted changes without prompting")
 	cmd.Flags().BoolVar(&syncCreateBranchIfMissing, "create-branch-if-missing", false, "create local branch when missing (from current HEAD)")
+	cmd.Flags().BoolVar(&syncCloneMissing, "clone-missing", false, "clone repositories missing from the workspace and recreate missing symlinks")
 }

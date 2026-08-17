@@ -6,6 +6,7 @@ import (
 
 	"github.com/kohbis/xr/cmd/repo"
 	"github.com/kohbis/xr/cmd/worktree"
+	"github.com/kohbis/xr/internal/exitcode"
 	"github.com/kohbis/xr/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -29,6 +30,10 @@ Define repositories in repos.yaml and use xr to search, view, and compare across
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
+		// The command already reported the failure in its own output.
+		if code, ok := exitcode.From(err); ok {
+			os.Exit(code)
+		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

@@ -132,7 +132,16 @@ func (w *Workspace) addSymlink(repo config.Repository, destPath string) error {
 	}
 	source := expandTilde(repo.Source)
 	output.PrintStep(fmt.Sprintf("creating symlink %s -> %s", repo.Name, source))
-	if err := os.Symlink(source, destPath); err != nil {
+	return createSymlink(repo, destPath)
+}
+
+// createSymlink links destPath to the repository source. It assumes destPath
+// does not exist yet and emits no progress output of its own.
+func createSymlink(repo config.Repository, destPath string) error {
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return fmt.Errorf("creating parent directory: %w", err)
+	}
+	if err := os.Symlink(expandTilde(repo.Source), destPath); err != nil {
 		return fmt.Errorf("creating symlink: %w", err)
 	}
 	return nil
@@ -144,11 +153,20 @@ func (w *Workspace) addClone(repo config.Repository, destPath string) error {
 		return nil
 	}
 
+	output.PrintStep(fmt.Sprintf("cloning %s from %s", repo.Name, repo.Source))
+	return w.cloneRepo(repo, destPath)
+}
+
+// cloneRepo clones the repository into destPath. It assumes destPath does not
+// exist yet and emits no progress output of its own beyond git's.
+func (w *Workspace) cloneRepo(repo config.Repository, destPath string) error {
+	if repo.Source == "" {
+		return fmt.Errorf("no source configured")
+	}
+
 	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 		return fmt.Errorf("creating parent directory: %w", err)
 	}
-
-	output.PrintStep(fmt.Sprintf("cloning %s from %s", repo.Name, repo.Source))
 
 	args := []string{"clone"}
 	if repo.Branch != "" {
@@ -382,6 +400,12 @@ type SyncOptions struct {
 	Prune  bool // prune deleted remote branches during fetch
 	DryRun bool // show what would be done, perform no actions
 
+	// CloneMissing materializes repositories that are absent from the workspace
+	// directory: clone repos are cloned, symlink repos are linked. Without it a
+	// missing repository is skipped. This is what makes an unattended bootstrap
+	// from repos.yaml possible, since xr init is interactive only.
+	CloneMissing bool
+
 	// CreateBranchIfMissing creates a local branch when checkout fails and the
 	// remote tracking branch is also unavailable. The branch is created from the
 	// current HEAD.
@@ -446,12 +470,24 @@ func (w *Workspace) syncSymlink(repo config.Repository, destPath string, opts Sy
 	output.PrintSyncHeader(repo.Name, "symlink")
 
 	info, err := os.Lstat(destPath)
-	if err != nil {
-		output.PrintSyncSkip("missing (run 'xr init' to recreate)")
+	switch {
+	case err != nil && !opts.CloneMissing:
+		output.PrintSyncSkip("missing (use --clone-missing or run 'xr init')")
 		return true, nil
-	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		return false, fmt.Errorf("%s exists but is not a symlink", destPath)
+	case err != nil && opts.DryRun:
+		output.PrintSyncAction(fmt.Sprintf("preview: would link to %s", expandTilde(repo.Source)))
+		output.PrintSyncSkip("preview")
+		return true, nil
+	case err != nil:
+		output.PrintSyncAction(fmt.Sprintf("linking to %s", expandTilde(repo.Source)))
+		if err := createSymlink(repo, destPath); err != nil {
+			return false, err
+		}
+		output.PrintSyncOK("symlink created")
+	default:
+		if info.Mode()&os.ModeSymlink == 0 {
+			return false, fmt.Errorf("%s exists but is not a symlink", destPath)
+		}
 	}
 
 	// Resolve symlink target to operate on the actual directory
@@ -484,8 +520,23 @@ func (w *Workspace) syncClone(repo config.Repository, destPath string, opts Sync
 	output.PrintSyncHeader(repo.Name, "clone")
 
 	if _, err := os.Stat(destPath); os.IsNotExist(err) {
-		output.PrintSyncSkip("missing (run 'xr init' to clone)")
-		return true, nil
+		if !opts.CloneMissing {
+			output.PrintSyncSkip("missing (use --clone-missing or run 'xr init')")
+			return true, nil
+		}
+		if opts.DryRun {
+			output.PrintSyncAction(fmt.Sprintf("preview: would clone %s", repo.Source))
+			output.PrintSyncSkip("preview")
+			return true, nil
+		}
+		output.PrintSyncAction(fmt.Sprintf("cloning from %s", repo.Source))
+		if err := w.cloneRepo(repo, destPath); err != nil {
+			return false, err
+		}
+		// A fresh clone is already on the configured branch and up to date, so
+		// there is nothing left for syncGitRepo to do.
+		output.PrintSyncOK("cloned")
+		return false, nil
 	}
 
 	skipped, err := w.syncGitRepo(repo, destPath, opts)

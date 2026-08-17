@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -670,5 +671,189 @@ func TestSyncSymlink_NoBranchNonGitDir(t *testing.T) {
 	}
 	if result.Skipped != 1 {
 		t.Errorf("Skipped = %d, want 1", result.Skipped)
+	}
+}
+
+// seedGitRepo creates a git repository with one commit on branch "main".
+func seedGitRepo(t *testing.T, dir string) string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not in PATH")
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "init")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("git init unavailable: %v\n%s", err, out)
+	}
+	runGit(t, dir, "config", "user.email", "xr@test")
+	runGit(t, dir, "config", "user.name", "xr")
+	if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte("hello\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "f.txt")
+	runGit(t, dir, "commit", "-m", "init", "--no-gpg-sign")
+	runGit(t, dir, "branch", "-M", "main")
+	return dir
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v in %s: %v\n%s", args, dir, err, out)
+	}
+}
+
+func TestSyncClone_MissingSkippedWithoutCloneMissing(t *testing.T) {
+	root := t.TempDir()
+	source := seedGitRepo(t, filepath.Join(t.TempDir(), "origin"))
+
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "api", Path: "api", Type: config.RepoTypeClone, Source: source, Branch: "main"},
+		},
+	}
+	ws := New(root, cfg)
+
+	result, err := ws.Sync(nil, SyncOptions{})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if result.Skipped != 1 || result.Synced != 0 {
+		t.Errorf("result = %+v, want Skipped=1 Synced=0", result)
+	}
+	if _, err := os.Stat(filepath.Join(root, "repos", "api")); !os.IsNotExist(err) {
+		t.Error("repository was materialized without --clone-missing")
+	}
+}
+
+func TestSyncClone_CloneMissingDryRunDoesNotClone(t *testing.T) {
+	root := t.TempDir()
+	source := seedGitRepo(t, filepath.Join(t.TempDir(), "origin"))
+
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "api", Path: "api", Type: config.RepoTypeClone, Source: source, Branch: "main"},
+		},
+	}
+	ws := New(root, cfg)
+
+	result, err := ws.Sync(nil, SyncOptions{CloneMissing: true, DryRun: true})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if result.Skipped != 1 {
+		t.Errorf("result = %+v, want Skipped=1", result)
+	}
+	if _, err := os.Stat(filepath.Join(root, "repos", "api")); !os.IsNotExist(err) {
+		t.Error("--dry-run cloned the repository")
+	}
+}
+
+func TestSyncClone_CloneMissingClonesIntoNestedPath(t *testing.T) {
+	root := t.TempDir()
+	source := seedGitRepo(t, filepath.Join(t.TempDir(), "origin"))
+
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "api", Path: "nested/api", Type: config.RepoTypeClone, Source: source, Branch: "main"},
+		},
+	}
+	ws := New(root, cfg)
+
+	result, err := ws.Sync(nil, SyncOptions{CloneMissing: true})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if result.Synced != 1 || result.Failed != 0 {
+		t.Errorf("result = %+v, want Synced=1 Failed=0", result)
+	}
+
+	dest := filepath.Join(root, "repos", "nested", "api")
+	if _, err := os.Stat(filepath.Join(dest, ".git")); err != nil {
+		t.Fatalf("clone missing at %s: %v", dest, err)
+	}
+	if branch := gitCurrentBranch(dest); branch != "main" {
+		t.Errorf("branch = %q, want %q", branch, "main")
+	}
+}
+
+func TestSyncClone_CloneMissingFailsWithoutSource(t *testing.T) {
+	root := t.TempDir()
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "api", Path: "api", Type: config.RepoTypeClone},
+		},
+	}
+	ws := New(root, cfg)
+
+	result, err := ws.Sync(nil, SyncOptions{CloneMissing: true})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if result.Failed != 1 {
+		t.Errorf("result = %+v, want Failed=1", result)
+	}
+}
+
+func TestSyncSymlink_MissingSkippedWithoutCloneMissing(t *testing.T) {
+	root := t.TempDir()
+	target := seedGitRepo(t, filepath.Join(t.TempDir(), "lib"))
+
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "lib", Path: "lib", Type: config.RepoTypeSymlink, Source: target, Branch: "main"},
+		},
+	}
+	ws := New(root, cfg)
+
+	result, err := ws.Sync(nil, SyncOptions{})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if result.Skipped != 1 {
+		t.Errorf("result = %+v, want Skipped=1", result)
+	}
+	if _, err := os.Lstat(filepath.Join(root, "repos", "lib")); !os.IsNotExist(err) {
+		t.Error("symlink was created without --clone-missing")
+	}
+}
+
+func TestSyncSymlink_CloneMissingRecreatesLink(t *testing.T) {
+	root := t.TempDir()
+	target := seedGitRepo(t, filepath.Join(t.TempDir(), "lib"))
+
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "lib", Path: "lib", Type: config.RepoTypeSymlink, Source: target, Branch: "main"},
+		},
+	}
+	ws := New(root, cfg)
+
+	result, err := ws.Sync(nil, SyncOptions{CloneMissing: true})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if result.Synced != 1 || result.Failed != 0 {
+		t.Errorf("result = %+v, want Synced=1 Failed=0", result)
+	}
+
+	link := filepath.Join(root, "repos", "lib")
+	got, err := os.Readlink(link)
+	if err != nil {
+		t.Fatalf("Readlink(%s): %v", link, err)
+	}
+	if got != target {
+		t.Errorf("symlink target = %q, want %q", got, target)
 	}
 }
