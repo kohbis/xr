@@ -61,8 +61,24 @@ func WriteJSONFile(path string, v any) error {
 	return os.WriteFile(path, data, 0644)
 }
 
+// RepoHeader returns a repository header block, including its leading and
+// trailing newlines, for callers writing to their own writer.
+func RepoHeader(name string) string {
+	return fmt.Sprintf("\n%s%s=== %s ===%s\n", c(colorBold), c(colorCyan), name, c(colorReset))
+}
+
 func PrintRepoHeader(name string) {
-	fmt.Printf("\n%s%s=== %s ===%s\n", c(colorBold), c(colorCyan), name, c(colorReset))
+	fmt.Print(RepoHeader(name))
+}
+
+// Dim returns msg rendered in the dimmed style used for de-emphasized lines.
+func Dim(msg string) string {
+	return c(colorDim) + msg + c(colorReset)
+}
+
+// Red returns msg rendered in the style used for failures.
+func Red(msg string) string {
+	return c(colorRed) + msg + c(colorReset)
 }
 
 func PrintMatch(repo, file string, line int, content string, isContext bool) {

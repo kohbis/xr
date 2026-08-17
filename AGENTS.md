@@ -22,6 +22,7 @@ xr/
 │   ├── workspace/           # Workspace initialization and git operations
 │   ├── worktree/            # Worktree creation/listing/removal across repos
 │   ├── search/              # Cross-repo search (ripgrep + fallback)
+│   ├── runner/              # Cross-repo command execution (xr exec)
 │   ├── structure/           # Directory tree analysis and display
 │   ├── output/              # Human/JSON output helpers and result models
 │   ├── exitcode/            # Silent exit-status errors for self-reporting commands
@@ -162,6 +163,7 @@ When adding/changing commands that prompt users, provide explicit non-interactiv
 - `xr worktree add`: prompts for repositories when `--repo` is omitted; `--non-interactive` requires `--repo`.
 - `xr worktree remove` / `prune --gone`: `--yes` confirms. Note `--force` here keeps git's meaning (discard uncommitted changes), unlike `xr repo remove --force`.
 - `xr init`: interactive only; `--non-interactive` returns an error (use `xr repo sync --clone-missing`).
+- `xr exec`: never prompts. It runs the command directly (no shell), skips repositories missing from the workspace, and exits non-zero via `internal/exitcode` when the command failed anywhere. `--jobs` buffers per-repository output and flushes it in configuration order, keeping stdout and stderr separate.
 
 ### JSON/report output conventions
 
@@ -170,7 +172,7 @@ Prefer a consistent automation story across commands:
 - `--report <path>` for structured file output when the command produces aggregate results (for example, selected `xr diff` modes)
 - include per-repository status and summary counts when applicable
 
-**Current behavior:** `--json` is implemented on `xr repo list`, `xr search`, `xr worktree list` / `add` / `remove` / `prune`, and `xr diff file` / `pattern` / `history`. `--report` is implemented on those `xr diff` subcommands only. `xr repo sync` does not yet expose `--json` or `--report` (planned for a later CLI cleanup phase).
+**Current behavior:** `--json` is implemented on `xr repo list`, `xr search`, `xr exec`, `xr worktree list` / `add` / `remove` / `prune`, and `xr diff file` / `pattern` / `history`. `--report` is implemented on those `xr diff` subcommands only. `xr repo sync` does not yet expose `--json` or `--report` (planned for a later CLI cleanup phase).
 
 ### Commit messages
 
