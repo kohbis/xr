@@ -23,6 +23,7 @@ xr/
 │   ├── worktree/            # Worktree creation/listing/removal across repos
 │   ├── search/              # Cross-repo search (ripgrep + fallback)
 │   ├── runner/              # Cross-repo command execution (xr exec)
+│   ├── parallel/            # Ordered concurrent execution shared by --jobs
 │   ├── structure/           # Directory tree analysis and display
 │   ├── output/              # Human/JSON output helpers and result models
 │   ├── exitcode/            # Silent exit-status errors for self-reporting commands
@@ -159,11 +160,11 @@ When adding/changing commands that prompt users, provide explicit non-interactiv
 - Global `--non-interactive` and `--yes` on the root command; `internal/interactive` helpers read them via `ShouldPrompt` / `Yes`.
 - `xr repo remove`: repo name(s) and `--force` or `--yes` required when not prompting.
 - `xr repo import`: `--yes` applies without prompt; `--non-interactive` without `--yes` returns an error; `--dry-run` previews.
-- `xr repo sync`: no dirty/checkout prompts when `--non-interactive` or stdin is not a TTY; use `--allow-dirty` when appropriate. `--clone-missing` materializes repositories absent from the workspace (clone repos cloned, symlink repos linked), which is the unattended alternative to the interactive `xr init`. Sync exits non-zero when any repository fails, via `internal/exitcode` so the per-repo summary stays the only output. `--jobs`/`-j` syncs repositories concurrently; each worker renders into its own `output.SyncPrinter` buffer and buffers are flushed in configuration order, so concurrency never reorders output. Values above 1 disable prompts, since workers cannot share stdin.
+- `xr repo sync`: no dirty/checkout prompts when `--non-interactive` or stdin is not a TTY; use `--allow-dirty` when appropriate. `--clone-missing` materializes repositories absent from the workspace (clone repos cloned, symlink repos linked), which is the unattended alternative to the interactive `xr init`. Sync exits non-zero when any repository fails, via `internal/exitcode` so the per-repo summary stays the only output. `--jobs`/`-j` syncs repositories concurrently via `internal/parallel`, which buffers each repository's output and flushes it in configuration order, so concurrency never reorders output. Values above 1 disable prompts, since workers cannot share stdin.
 - `xr worktree add`: prompts for repositories when `--repo` is omitted; `--non-interactive` requires `--repo`.
 - `xr worktree remove` / `prune --gone`: `--yes` confirms. Note `--force` here keeps git's meaning (discard uncommitted changes), unlike `xr repo remove --force`.
 - `xr init`: interactive only; `--non-interactive` returns an error (use `xr repo sync --clone-missing`).
-- `xr exec`: never prompts. It runs the command directly (no shell), skips repositories missing from the workspace, and exits non-zero via `internal/exitcode` when the command failed anywhere. `--jobs` buffers per-repository output and flushes it in configuration order, keeping stdout and stderr separate.
+- `xr exec`: never prompts. It runs the command directly (no shell), skips repositories missing from the workspace, and exits non-zero via `internal/exitcode` when the command failed anywhere. `--jobs` uses `internal/parallel` to buffer per-repository output and flush it in configuration order.
 
 ### JSON/report output conventions
 
@@ -222,3 +223,13 @@ Changelog excludes commits with types `docs`, `test`, and `chore`.
 - `git` — required for `xr init`, `xr repo sync`, `xr repo import`, `xr worktree`, `xr diff`, `xr diff history`
 - `diff` — required for `xr diff file` (pre-installed on most systems)
 - `rg` (ripgrep) — optional for `xr search`; falls back to built-in implementation if absent
+
+### Concurrency (`--jobs`)
+
+`internal/parallel` is the single implementation of "run N items concurrently, print in order":
+
+- `parallel.Run(n, jobs, stdout, stderr, fn)` gives each item its own buffers and flushes them in index order, so a concurrent run produces byte-identical output to a sequential one.
+- Below two effective workers it passes the real streams through, so output still streams live.
+- stdout and stderr are buffered separately; redirection must keep working. Subprocess output must be routed to the matching stream (see `output.SyncPrinter.Writer` / `ErrWriter`) rather than folded into one.
+
+New commands that gain `--jobs` should use this package rather than growing their own worker pool.

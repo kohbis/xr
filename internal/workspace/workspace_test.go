@@ -983,3 +983,77 @@ func captureStdout(t *testing.T, fn func()) string {
 	}
 	return <-done
 }
+
+// TestSyncClone_CloneProgressGoesToStderr pins the stream git's clone output
+// belongs to. Buffering per repository once moved it onto stdout, which broke
+// `2>/dev/null` for callers.
+func TestSyncClone_CloneProgressGoesToStderr(t *testing.T) {
+	source := seedGitRepo(t, filepath.Join(t.TempDir(), "origin"))
+
+	for _, jobs := range []int{1, 4} {
+		t.Run(fmt.Sprintf("jobs=%d", jobs), func(t *testing.T) {
+			root := t.TempDir()
+			cfg := &config.Config{
+				Workspace: "./repos",
+				Repositories: []config.Repository{
+					{Name: "api", Path: "api", Type: config.RepoTypeClone, Source: source, Branch: "main"},
+				},
+			}
+			ws := New(root, cfg)
+
+			stdout, stderr := captureStreams(t, func() {
+				if _, err := ws.Sync(nil, SyncOptions{CloneMissing: true, Jobs: jobs}); err != nil {
+					t.Errorf("Sync() error = %v", err)
+				}
+			})
+
+			if strings.Contains(stdout, "Cloning into") {
+				t.Errorf("git clone progress leaked onto stdout:\n%s", stdout)
+			}
+			if !strings.Contains(stderr, "Cloning into") {
+				t.Errorf("git clone progress missing from stderr:\n%s", stderr)
+			}
+			// xr's own progress lines stay on stdout.
+			if !strings.Contains(stdout, "cloned") {
+				t.Errorf("sync progress missing from stdout:\n%s", stdout)
+			}
+		})
+	}
+}
+
+func captureStreams(t *testing.T, fn func()) (string, string) {
+	t.Helper()
+	origOut, origErr := os.Stdout, os.Stderr
+
+	outR, outW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	errR, errW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout, os.Stderr = outW, errW
+
+	read := func(r *os.File) chan string {
+		ch := make(chan string)
+		go func() {
+			var buf bytes.Buffer
+			_, _ = io.Copy(&buf, r)
+			ch <- buf.String()
+		}()
+		return ch
+	}
+	outCh, errCh := read(outR), read(errR)
+
+	fn()
+
+	os.Stdout, os.Stderr = origOut, origErr
+	if err := outW.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := errW.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return <-outCh, <-errCh
+}

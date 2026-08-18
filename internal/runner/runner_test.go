@@ -125,20 +125,6 @@ func TestRun_RepoFilter(t *testing.T) {
 	}
 }
 
-func TestEffectiveJobs(t *testing.T) {
-	tests := []struct{ jobs, n, want int }{
-		{jobs: 0, n: 5, want: 1},
-		{jobs: -2, n: 5, want: 1},
-		{jobs: 3, n: 10, want: 3},
-		{jobs: 8, n: 3, want: 3},
-	}
-	for _, tt := range tests {
-		if got := effectiveJobs(tt.jobs, tt.n); got != tt.want {
-			t.Errorf("effectiveJobs(%d, %d) = %d, want %d", tt.jobs, tt.n, got, tt.want)
-		}
-	}
-}
-
 // TestRun_ConcurrentOutputMatchesSequential is the core guarantee of --jobs:
 // concurrency must not reorder or interleave what the user sees.
 func TestRun_ConcurrentOutputMatchesSequential(t *testing.T) {

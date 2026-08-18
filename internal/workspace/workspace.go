@@ -1,7 +1,6 @@
 package workspace
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -9,11 +8,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/git"
 	"github.com/kohbis/xr/internal/output"
+	"github.com/kohbis/xr/internal/parallel"
 )
 
 type Workspace struct {
@@ -407,15 +406,21 @@ func (w *Workspace) Sync(repoNames []string, opts SyncOptions) (*SyncResult, err
 		targets = append(targets, repo)
 	}
 
-	if w.syncJobs(opts, len(targets)) > 1 {
-		return w.syncConcurrent(targets, wsDir, opts), nil
+	type outcome struct {
+		skipped bool
+		err     error
 	}
+	outcomes := make([]outcome, len(targets))
+
+	parallel.Run(len(targets), w.syncJobs(opts, len(targets)), os.Stdout, os.Stderr,
+		func(i int, out, errW io.Writer) {
+			p := output.NewSyncPrinter(out, errW)
+			outcomes[i].skipped, outcomes[i].err = w.syncRepo(targets[i], wsDir, opts, p)
+		})
 
 	result := &SyncResult{}
-	p := output.StdoutSyncPrinter()
-	for _, repo := range targets {
-		skipped, err := w.syncRepo(repo, wsDir, opts, p)
-		result.record(skipped, err)
+	for _, o := range outcomes {
+		result.record(o.skipped, o.err)
 	}
 	return result, nil
 }
@@ -426,14 +431,7 @@ func (w *Workspace) syncJobs(opts SyncOptions, n int) int {
 	if opts.ConfirmDirty != nil || opts.ConfirmCheckout != nil {
 		return 1
 	}
-	jobs := opts.Jobs
-	if jobs < 1 {
-		jobs = 1
-	}
-	if jobs > n {
-		jobs = n
-	}
-	return jobs
+	return parallel.Jobs(opts.Jobs, n)
 }
 
 // syncRepo syncs one repository, reporting failures through p. It returns
@@ -453,54 +451,6 @@ func (w *Workspace) syncRepo(repo config.Repository, wsDir string, opts SyncOpti
 		p.Fail(fmt.Sprintf("%v", err))
 	}
 	return skipped, err
-}
-
-// syncConcurrent syncs repositories using jobs workers. Each repository renders
-// into its own buffer, and buffers are flushed in configuration order so the
-// output is identical to a sequential run.
-func (w *Workspace) syncConcurrent(targets []config.Repository, wsDir string, opts SyncOptions) *SyncResult {
-	type slot struct {
-		buf     bytes.Buffer
-		skipped bool
-		err     error
-		done    chan struct{}
-	}
-
-	slots := make([]*slot, len(targets))
-	for i := range slots {
-		slots[i] = &slot{done: make(chan struct{})}
-	}
-
-	queue := make(chan int)
-	go func() {
-		for i := range targets {
-			queue <- i
-		}
-		close(queue)
-	}()
-
-	var wg sync.WaitGroup
-	for range w.syncJobs(opts, len(targets)) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range queue {
-				s := slots[i]
-				s.skipped, s.err = w.syncRepo(targets[i], wsDir, opts, output.NewSyncPrinter(&s.buf))
-				close(s.done)
-			}
-		}()
-	}
-
-	result := &SyncResult{}
-	for _, s := range slots {
-		<-s.done
-		_, _ = io.Copy(os.Stdout, &s.buf)
-		result.record(s.skipped, s.err)
-	}
-	wg.Wait()
-
-	return result
 }
 
 func (w *Workspace) syncSymlink(repo config.Repository, destPath string, opts SyncOptions, p *output.SyncPrinter) (bool, error) {
@@ -567,9 +517,7 @@ func (w *Workspace) syncClone(repo config.Repository, destPath string, opts Sync
 			return true, nil
 		}
 		p.Action(fmt.Sprintf("cloning from %s", repo.Source))
-		// git's clone progress joins the repository's own output, so it stays with
-		// this repository's block when workers run concurrently.
-		if err := w.cloneRepo(repo, destPath, p.Writer(), p.Writer()); err != nil {
+		if err := w.cloneRepo(repo, destPath, p.Writer(), p.ErrWriter()); err != nil {
 			return false, err
 		}
 		// A fresh clone is already on the configured branch and up to date, so

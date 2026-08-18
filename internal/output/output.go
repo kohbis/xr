@@ -152,18 +152,26 @@ func PrintDiffLine(line string) {
 // render into their own buffer, so the combined output can be flushed in
 // repository order and read exactly like a sequential run.
 type SyncPrinter struct {
-	w io.Writer
+	w    io.Writer
+	errW io.Writer
 }
 
-// NewSyncPrinter returns a printer writing to w.
-func NewSyncPrinter(w io.Writer) *SyncPrinter {
-	return &SyncPrinter{w: w}
+// NewSyncPrinter returns a printer whose progress lines go to out. Subprocess
+// output is streamed through Writer and ErrWriter so each stream keeps its
+// identity.
+func NewSyncPrinter(out, err io.Writer) *SyncPrinter {
+	return &SyncPrinter{w: out, errW: err}
 }
 
-// Writer returns the underlying writer, for subprocesses that stream their own
+// Writer returns the stdout writer, for subprocesses that stream their own
 // output (git clone progress, for example).
 func (p *SyncPrinter) Writer() io.Writer {
 	return p.w
+}
+
+// ErrWriter returns the stderr writer for subprocess output.
+func (p *SyncPrinter) ErrWriter() io.Writer {
+	return p.errW
 }
 
 // Header prints a repo header for sync operations.
@@ -191,9 +199,9 @@ func (p *SyncPrinter) Fail(msg string) {
 	_, _ = fmt.Fprintf(p.w, "  %s✗ %s%s\n", c(colorRed), msg, c(colorReset))
 }
 
-// StdoutSyncPrinter returns a printer writing straight to stdout.
+// StdoutSyncPrinter returns a printer writing straight to the process streams.
 func StdoutSyncPrinter() *SyncPrinter {
-	return NewSyncPrinter(os.Stdout)
+	return NewSyncPrinter(os.Stdout, os.Stderr)
 }
 
 // PrintSyncHeader prints a repo header for sync operations.

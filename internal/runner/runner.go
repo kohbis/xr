@@ -14,10 +14,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"sync"
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/output"
+	"github.com/kohbis/xr/internal/parallel"
 )
 
 // Options configures Run.
@@ -78,13 +78,10 @@ func Run(cfg *config.Config, wsDir string, args []string, opts Options) (*Result
 	}
 
 	runs := make([]RepoRun, len(targets))
-	if jobs := effectiveJobs(opts.Jobs, len(targets)); jobs > 1 {
-		runConcurrent(targets, wsDir, args, opts, jobs, runs)
-	} else {
-		for i, repo := range targets {
-			runs[i] = runRepo(repo, wsDir, args, opts, os.Stdout, os.Stderr)
-		}
-	}
+	parallel.Run(len(targets), opts.Jobs, os.Stdout, os.Stderr,
+		func(i int, out, errW io.Writer) {
+			runs[i] = runRepo(targets[i], wsDir, args, opts, out, errW)
+		})
 
 	result := &Result{Runs: runs}
 	for _, r := range runs {
@@ -98,63 +95,6 @@ func Run(cfg *config.Config, wsDir string, args []string, opts Options) (*Result
 		}
 	}
 	return result, nil
-}
-
-// effectiveJobs resolves the worker count for n repositories.
-func effectiveJobs(jobs, n int) int {
-	if jobs < 1 {
-		jobs = 1
-	}
-	if jobs > n {
-		jobs = n
-	}
-	return jobs
-}
-
-// runConcurrent fills runs using the given number of workers. Each repository
-// buffers its own output, and buffers are flushed in configuration order so the
-// combined output matches a sequential run.
-func runConcurrent(targets []config.Repository, wsDir string, args []string, opts Options, jobs int, runs []RepoRun) {
-	type slot struct {
-		out  bytes.Buffer
-		err  bytes.Buffer
-		done chan struct{}
-	}
-
-	slots := make([]*slot, len(targets))
-	for i := range slots {
-		slots[i] = &slot{done: make(chan struct{})}
-	}
-
-	queue := make(chan int)
-	go func() {
-		for i := range targets {
-			queue <- i
-		}
-		close(queue)
-	}()
-
-	var wg sync.WaitGroup
-	for range jobs {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range queue {
-				s := slots[i]
-				runs[i] = runRepo(targets[i], wsDir, args, opts, &s.out, &s.err)
-				close(s.done)
-			}
-		}()
-	}
-
-	for _, s := range slots {
-		<-s.done
-		// Streams stay separate so redirection keeps working; ordering between
-		// them is lost within a repository, which is the cost of buffering.
-		_, _ = io.Copy(os.Stdout, &s.out)
-		_, _ = io.Copy(os.Stderr, &s.err)
-	}
-	wg.Wait()
 }
 
 // runRepo runs the command in one repository, writing human-readable progress
