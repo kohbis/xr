@@ -235,6 +235,18 @@ Adds the workspace directory to the `.gitignore` next to `repos.yaml`. Useful af
 
 ---
 
+### This reference (`xr skill`)
+
+```sh
+xr skill    # print this file (SKILL.md) to stdout
+```
+
+Prints the embedded copy of this document, so an agent can load it without
+knowing the install path of the `xr` binary or the location of the repo it was
+built from.
+
+---
+
 ### Config path override
 
 All commands accept global flags:
