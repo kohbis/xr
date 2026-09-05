@@ -3,6 +3,7 @@ package worktree
 import (
 	"fmt"
 
+	"github.com/kohbis/xr/internal/shellcomp"
 	wt "github.com/kohbis/xr/internal/worktree"
 	"github.com/spf13/cobra"
 )
@@ -79,4 +80,5 @@ func init() {
 	addCmd.Flags().StringVar(&addBase, "base", "", "start point for a branch created by --create (default: repos.yaml branch, then HEAD)")
 	addCmd.Flags().BoolVar(&addDryRun, "dry-run", false, "preview only, create no worktrees")
 	addCmd.Flags().BoolVar(&addJSON, "json", false, "output in JSON format")
+	cobra.CheckErr(addCmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))
 }
