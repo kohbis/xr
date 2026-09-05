@@ -43,6 +43,15 @@ Examples:
 	RunE: runDiffGit,
 }
 
+// diffModeExitCode exits non-zero when git failed in any repository, matching
+// the other per-repository commands.
+func diffModeExitCode(cmd *cobra.Command, failed int) error {
+	if failed == 0 {
+		return nil
+	}
+	return exitcode.Failed(cmd)
+}
+
 var diffFileCmd = &cobra.Command{
 	Use:   "file <path>",
 	Short: "Compare a file path across repositories",
@@ -65,8 +74,8 @@ var diffHistoryCmd = &cobra.Command{
 	Use:   "history <query>",
 	Short: "Search git commit messages across repositories",
 	Args:  cobra.ExactArgs(1),
-	RunE: func(_ *cobra.Command, args []string) error {
-		return runDiffHistory(args[0])
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runDiffHistory(cmd, args[0])
 	},
 }
 
@@ -104,7 +113,7 @@ func writeDiffResult(result output.CommandResult) error {
 	return nil
 }
 
-func runDiffGit(_ *cobra.Command, args []string) error {
+func runDiffGit(cmd *cobra.Command, args []string) error {
 	if diffJSON || diffReport != "" {
 		return fmt.Errorf("--json/--report is not supported for git diff mode")
 	}
@@ -112,7 +121,16 @@ func runDiffGit(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	return diff.GitDiff(cfg, wsDir, diffRepo, args)
+	failed := 0
+	for _, r := range diff.GitDiff(cfg, wsDir, diffRepo, args) {
+		output.PrintRepoHeader(r.Repo)
+		fmt.Print(r.Output)
+		if r.Error != "" {
+			failed++
+			output.PrintWarning(fmt.Sprintf("%s: %s", r.Repo, r.Error))
+		}
+	}
+	return diffModeExitCode(cmd, failed)
 }
 
 func runDiffFile(path string) error {
@@ -215,13 +233,10 @@ func runDiffPattern(cmd *cobra.Command, pattern string) error {
 		return err
 	}
 
-	if failed > 0 {
-		return exitcode.Failed(cmd)
-	}
-	return nil
+	return diffModeExitCode(cmd, failed)
 }
 
-func runDiffHistory(query string) error {
+func runDiffHistory(cmd *cobra.Command, query string) error {
 	cfg, wsDir, err := loadDiffWorkspace()
 	if err != nil {
 		return err
@@ -232,28 +247,36 @@ func runDiffHistory(query string) error {
 		return err
 	}
 
-	if !diffJSON && diffReport == "" {
-		for _, h := range history {
-			output.PrintRepoHeader(h.Repo)
-			if len(h.Lines) == 0 {
-				fmt.Println("  (no matches)")
-				continue
-			}
-			fmt.Println(strings.Join(h.Lines, "\n"))
-		}
-		return nil
-	}
-
 	repos := make([]output.RepoResult, 0, len(history))
 	matches := 0
+	failed := 0
 	for _, h := range history {
 		m := len(h.Lines)
 		matches += m
 		status := "ok"
-		if m == 0 {
+		switch {
+		case h.Error != "":
+			status = "failed"
+			failed++
+		case m == 0:
 			status = "no_matches"
 		}
-		repos = append(repos, output.RepoResult{Name: h.Repo, Status: status, Metrics: map[string]int{"matches": m}})
+		repos = append(repos, output.RepoResult{Name: h.Repo, Status: status, Error: h.Error, Metrics: map[string]int{"matches": m}})
+	}
+
+	if !diffJSON && diffReport == "" {
+		for _, h := range history {
+			output.PrintRepoHeader(h.Repo)
+			switch {
+			case h.Error != "":
+				output.PrintWarning(fmt.Sprintf("%s: %s", h.Repo, h.Error))
+			case len(h.Lines) == 0:
+				fmt.Println("  (no matches)")
+			default:
+				fmt.Println(strings.Join(h.Lines, "\n"))
+			}
+		}
+		return diffModeExitCode(cmd, failed)
 	}
 
 	result := output.CommandResult{
@@ -262,7 +285,10 @@ func runDiffHistory(query string) error {
 		Repos:   repos,
 		Data:    map[string]any{"history": history},
 	}
-	return writeDiffResult(result)
+	if err := writeDiffResult(result); err != nil {
+		return err
+	}
+	return diffModeExitCode(cmd, failed)
 }
 
 func init() {

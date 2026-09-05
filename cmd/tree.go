@@ -51,7 +51,7 @@ var treeCmd = &cobra.Command{
 			}
 
 			fmt.Println()
-			structure.PrintTree(info)
+			fmt.Print(structure.Render(info))
 		}
 
 		return nil

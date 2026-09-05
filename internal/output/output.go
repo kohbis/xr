@@ -81,19 +81,6 @@ func Red(msg string) string {
 	return c(colorRed) + msg + c(colorReset)
 }
 
-func PrintMatch(repo, file string, line int, content string, isContext bool) {
-	if isContext {
-		fmt.Printf("  %s%d%s-%s\n", c(colorDim), line, c(colorReset), content)
-	} else {
-		fmt.Printf("%s%s%s:%s%s%s:%s%d%s:%s\n",
-			c(colorGreen), repo, c(colorReset),
-			c(colorBlue), file, c(colorReset),
-			c(colorYellow), line, c(colorReset),
-			content,
-		)
-	}
-}
-
 func PrintMatchSimple(repo, file string, line int, content string, isContext bool) {
 	if isContext {
 		fmt.Printf("  %s%s%s/%s:%s%d%s-%s\n",
@@ -116,24 +103,6 @@ func PrintMatchSimple(repo, file string, line int, content string, isContext boo
 
 func PrintWarning(msg string) {
 	fmt.Printf("%swarning: %s%s\n", c(colorYellow), msg, c(colorReset))
-}
-
-// PrintStep prints a progress message indented for nested operation logs.
-func PrintStep(msg string) {
-	fmt.Printf("  %s\n", msg)
-}
-
-// PrintStepWarning prints an indented warning line in nested operation logs.
-func PrintStepWarning(msg string) {
-	fmt.Printf("  warning: %s\n", msg)
-}
-
-func PrintError(msg string) {
-	fmt.Printf("%serror: %s%s\n", c(colorRed), msg, c(colorReset))
-}
-
-func PrintSuccess(msg string) {
-	fmt.Printf("%s%s%s\n", c(colorGreen), msg, c(colorReset))
 }
 
 func PrintDiffLine(line string) {
@@ -226,36 +195,6 @@ func (p *SyncPrinter) Action(msg string) {
 func (p *SyncPrinter) Fail(msg string) {
 	p.record(SyncEventFail, msg)
 	_, _ = fmt.Fprintf(p.w, "  %s✗ %s%s\n", c(colorRed), msg, c(colorReset))
-}
-
-// StdoutSyncPrinter returns a printer writing straight to the process streams.
-func StdoutSyncPrinter() *SyncPrinter {
-	return NewSyncPrinter(os.Stdout, os.Stderr)
-}
-
-// PrintSyncHeader prints a repo header for sync operations.
-func PrintSyncHeader(name, repoType string) {
-	StdoutSyncPrinter().Header(name, repoType)
-}
-
-// PrintSyncSkip prints a skip message for repos that don't need syncing.
-func PrintSyncSkip(reason string) {
-	StdoutSyncPrinter().Skip(reason)
-}
-
-// PrintSyncOK prints a success message for a sync step.
-func PrintSyncOK(msg string) {
-	StdoutSyncPrinter().OK(msg)
-}
-
-// PrintSyncAction prints an action being performed.
-func PrintSyncAction(msg string) {
-	StdoutSyncPrinter().Action(msg)
-}
-
-// PrintSyncFail prints a failure message for a sync step.
-func PrintSyncFail(msg string) {
-	StdoutSyncPrinter().Fail(msg)
 }
 
 // PrintActionSummary prints the final summary of a multi-repository operation.

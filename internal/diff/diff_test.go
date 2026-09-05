@@ -1,7 +1,6 @@
 package diff
 
 import (
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -470,35 +469,54 @@ func TestGitDiff_RespectsRepoFilter(t *testing.T) {
 		},
 	}
 
-	r, w, err := os.Pipe()
+	results := GitDiff(cfg, reposDir, []string{"alpha"}, nil)
+	if len(results) != 1 {
+		t.Fatalf("got %d results, want 1 (beta excluded by filter): %+v", len(results), results)
+	}
+	if results[0].Repo != "alpha" || results[0].Error != "" {
+		t.Fatalf("result = %+v", results[0])
+	}
+	if !strings.Contains(results[0].Output, "delta-alpha") {
+		t.Errorf("expected diff output for alpha, got:\n%s", results[0].Output)
+	}
+}
+
+func TestGitDiff_ReportsErrorForNonGitDir(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not in PATH")
+	}
+	reposDir := filepath.Join(t.TempDir(), "repos")
+	if err := os.MkdirAll(filepath.Join(reposDir, "plain"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{
+		Workspace:    "./repos",
+		Repositories: []config.Repository{{Name: "plain", Path: "plain", Type: config.RepoTypeClone}},
+	}
+	results := GitDiff(cfg, reposDir, nil, nil)
+	if len(results) != 1 || results[0].Error == "" {
+		t.Fatalf("expected an error result for a non-git directory, got %+v", results)
+	}
+}
+
+func TestSearchHistoryResults_ReportsErrorForNonGitDir(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not in PATH")
+	}
+	reposDir := filepath.Join(t.TempDir(), "repos")
+	if err := os.MkdirAll(filepath.Join(reposDir, "plain"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{
+		Workspace:    "./repos",
+		Repositories: []config.Repository{{Name: "plain", Path: "plain", Type: config.RepoTypeClone}},
+	}
+	results, err := SearchHistoryResults(cfg, reposDir, "fix", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	old := os.Stdout
-	os.Stdout = w
-
-	gitErr := GitDiff(cfg, reposDir, []string{"alpha"}, nil)
-
-	_ = w.Close()
-	os.Stdout = old
-	out, readErr := io.ReadAll(r)
-	_ = r.Close()
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
-	if gitErr != nil {
-		t.Fatalf("GitDiff() error = %v", gitErr)
-	}
-
-	s := string(out)
-	if s == "" {
-		t.Fatal("expected diff output for alpha")
-	}
-	if !strings.Contains(s, "=== alpha ===") {
-		t.Errorf("expected alpha repo header, got:\n%s", s)
-	}
-	if strings.Contains(s, "=== beta ===") {
-		t.Errorf("beta should be excluded by --repo filter, got:\n%s", s)
+	if len(results) != 1 || results[0].Error == "" || len(results[0].Lines) != 0 {
+		t.Fatalf("expected an error result with no lines, got %+v", results)
 	}
 }
 

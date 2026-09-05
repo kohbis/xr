@@ -1,6 +1,8 @@
 package worktree
 
 import (
+	"os"
+
 	"github.com/kohbis/xr/internal/exitcode"
 	"github.com/kohbis/xr/internal/output"
 	wt "github.com/kohbis/xr/internal/worktree"
@@ -8,22 +10,23 @@ import (
 )
 
 func printOutcomes(result *wt.Result) {
+	p := output.NewSyncPrinter(os.Stdout, os.Stderr)
 	for _, o := range result.Outcomes {
-		output.PrintSyncHeader(o.Repo, "worktree")
+		p.Header(o.Repo, "worktree")
 		switch o.Status {
 		case wt.StatusCreated:
 			if o.Detail != "" {
-				output.PrintSyncAction(o.Detail)
+				p.Action(o.Detail)
 			}
-			output.PrintSyncOK(displayPath(o.Path))
+			p.OK(displayPath(o.Path))
 		case wt.StatusRemoved:
-			output.PrintSyncOK("removed " + displayPath(o.Path))
+			p.OK("removed " + displayPath(o.Path))
 		case wt.StatusPruned:
 			msg := "pruned stale worktree entries"
 			if o.Detail != "" {
 				msg += ": " + o.Detail
 			}
-			output.PrintSyncOK(msg)
+			p.OK(msg)
 		case wt.StatusPreview:
 			msg := "preview"
 			if o.Detail != "" {
@@ -32,11 +35,11 @@ func printOutcomes(result *wt.Result) {
 			if o.Path != "" {
 				msg += " → " + displayPath(o.Path)
 			}
-			output.PrintSyncSkip(msg)
+			p.Skip(msg)
 		case wt.StatusSkipped:
-			output.PrintSyncSkip(o.Detail)
+			p.Skip(o.Detail)
 		case wt.StatusFailed:
-			output.PrintSyncFail(o.Detail)
+			p.Fail(o.Detail)
 		}
 	}
 }

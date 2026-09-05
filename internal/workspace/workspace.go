@@ -18,10 +18,22 @@ import (
 type Workspace struct {
 	Config *config.Config
 	Root   string
+
+	// Printer receives the progress of Init, Add, Remove and CreateGitignore.
+	// It defaults to the process streams; callers that must keep stdout clean
+	// (JSON output, tests) inject their own.
+	Printer *output.SyncPrinter
 }
 
 func New(root string, cfg *config.Config) *Workspace {
 	return &Workspace{Root: root, Config: cfg}
+}
+
+func (w *Workspace) printer() *output.SyncPrinter {
+	if w.Printer == nil {
+		w.Printer = output.NewSyncPrinter(os.Stdout, os.Stderr)
+	}
+	return w.Printer
 }
 
 func (w *Workspace) Init() error {
@@ -56,9 +68,10 @@ func (w *Workspace) CreateGitignore(ignoreWorkspace bool) error {
 	existing, _ := os.ReadFile(gitignorePath)
 	entry := strings.TrimPrefix(w.Config.Workspace, "./") + "/"
 
+	p := w.printer()
 	if ignoreWorkspace {
 		if containsLine(string(existing), entry) {
-			output.PrintStep(fmt.Sprintf("%s is already in .gitignore", entry))
+			p.Skip(fmt.Sprintf("%s is already in .gitignore", entry))
 			return nil
 		}
 		content := string(existing)
@@ -66,11 +79,11 @@ func (w *Workspace) CreateGitignore(ignoreWorkspace bool) error {
 			content += "\n"
 		}
 		content += entry + "\n"
-		output.PrintStep(fmt.Sprintf("adding %s to .gitignore", entry))
+		p.Action(fmt.Sprintf("adding %s to .gitignore", entry))
 		return os.WriteFile(gitignorePath, []byte(content), 0644)
 	}
 
-	output.PrintStep(".gitignore unchanged")
+	p.Skip(".gitignore unchanged")
 	return nil
 }
 
@@ -96,7 +109,7 @@ func (w *Workspace) createReadme() error {
 		return nil // already exists
 	}
 	content := "# Workspace\n\nInitialized by xr. Edit `repos.yaml` to add repositories, then run `xr init`.\n"
-	output.PrintStep("creating README.md")
+	w.printer().Action("creating README.md")
 	return os.WriteFile(readmePath, []byte(content), 0644)
 }
 
@@ -128,13 +141,18 @@ func expandTilde(path string) string {
 }
 
 func (w *Workspace) addSymlink(repo config.Repository, destPath string) error {
+	p := w.printer()
+	p.Header(repo.Name, "symlink")
 	if _, err := os.Lstat(destPath); err == nil {
-		output.PrintStep(fmt.Sprintf("symlink %s already exists, skipping", repo.Name))
+		p.Skip("already exists")
 		return nil
 	}
-	source := expandTilde(repo.Source)
-	output.PrintStep(fmt.Sprintf("creating symlink %s -> %s", repo.Name, source))
-	return createSymlink(repo, destPath)
+	p.Action(fmt.Sprintf("linking to %s", expandTilde(repo.Source)))
+	if err := createSymlink(repo, destPath); err != nil {
+		return err
+	}
+	p.OK("symlink created")
+	return nil
 }
 
 // createSymlink links destPath to the repository source. It assumes destPath
@@ -150,13 +168,19 @@ func createSymlink(repo config.Repository, destPath string) error {
 }
 
 func (w *Workspace) addClone(repo config.Repository, destPath string) error {
+	p := w.printer()
+	p.Header(repo.Name, "clone")
 	if _, err := os.Stat(destPath); err == nil {
-		output.PrintStep(fmt.Sprintf("clone %s already exists, skipping", repo.Name))
+		p.Skip("already exists")
 		return nil
 	}
 
-	output.PrintStep(fmt.Sprintf("cloning %s from %s", repo.Name, repo.Source))
-	return w.cloneRepo(repo, destPath, os.Stdout, os.Stderr)
+	p.Action(fmt.Sprintf("cloning from %s", repo.Source))
+	if err := w.cloneRepo(repo, destPath, p.Writer(), p.ErrWriter()); err != nil {
+		return err
+	}
+	p.OK("cloned")
+	return nil
 }
 
 // cloneRepo clones the repository into destPath, streaming git's own progress
@@ -229,9 +253,11 @@ func validateInsideDir(dir, destPath string) error {
 }
 
 func (w *Workspace) removeSymlink(repo config.Repository, destPath string) error {
+	p := w.printer()
+	p.Header(repo.Name, "symlink")
 	info, err := os.Lstat(destPath)
 	if os.IsNotExist(err) {
-		output.PrintStep(fmt.Sprintf("symlink %s already removed", repo.Name))
+		p.Skip("already removed")
 		return nil
 	}
 	if err != nil {
@@ -240,43 +266,62 @@ func (w *Workspace) removeSymlink(repo config.Repository, destPath string) error
 	if info.Mode()&os.ModeSymlink == 0 {
 		return fmt.Errorf("%s exists but is not a symlink", destPath)
 	}
-	output.PrintStep(fmt.Sprintf("removing symlink %s", repo.Name))
-	return os.Remove(destPath)
+	p.Action("removing symlink")
+	if err := os.Remove(destPath); err != nil {
+		return err
+	}
+	p.OK("removed")
+	return nil
 }
 
 func (w *Workspace) removeClone(repo config.Repository, destPath string) error {
+	p := w.printer()
+	p.Header(repo.Name, "clone")
 	if _, err := os.Stat(destPath); os.IsNotExist(err) {
-		output.PrintStep(fmt.Sprintf("clone %s already removed", repo.Name))
+		p.Skip("already removed")
 		return nil
 	}
-	output.PrintStep(fmt.Sprintf("removing clone %s", repo.Name))
-	return os.RemoveAll(destPath)
+	p.Action("removing clone")
+	if err := os.RemoveAll(destPath); err != nil {
+		return err
+	}
+	p.OK("removed")
+	return nil
+}
+
+// ScanResult is the outcome of ScanRepos: the repositories detected, plus
+// warnings about entries that were skipped or only partially detected. The
+// warnings are returned rather than printed so the caller decides how, and
+// whether, to show them.
+type ScanResult struct {
+	Repos    []config.Repository
+	Warnings []string
 }
 
 // ScanRepos scans the workspace directory and detects repositories.
-func (w *Workspace) ScanRepos() ([]config.Repository, error) {
+func (w *Workspace) ScanRepos() (*ScanResult, error) {
 	wsDir := filepath.Join(w.Root, w.Config.Workspace)
 	entries, err := os.ReadDir(wsDir)
 	if err != nil {
 		return nil, fmt.Errorf("reading workspace directory: %w", err)
 	}
 
-	var repos []config.Repository
+	result := &ScanResult{}
 	for _, entry := range entries {
 		repo, err := detectRepo(wsDir, entry)
 		if err != nil {
-			output.PrintStepWarning(fmt.Sprintf("skipping %s: %v", entry.Name(), err))
+			result.Warnings = append(result.Warnings, fmt.Sprintf("skipping %s: %v", entry.Name(), err))
 			continue
 		}
 		if repo == nil {
 			continue
 		}
 		if repo.Source == "" {
-			output.PrintStepWarning(fmt.Sprintf("%s: no origin remote found, source will be empty", repo.Name))
+			result.Warnings = append(result.Warnings, fmt.Sprintf("%s: no origin remote found, source will be empty", repo.Name))
 		}
-		repos = append(repos, *repo)
+		result.Repos = append(result.Repos, *repo)
 	}
-	return repos, nil
+	return result, nil
 }
 
 func detectRepo(wsDir string, entry os.DirEntry) (*config.Repository, error) {

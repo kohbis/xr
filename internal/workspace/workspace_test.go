@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/kohbis/xr/internal/config"
+	"github.com/kohbis/xr/internal/output"
 )
 
 func TestNormalizeGitignoreLine(t *testing.T) {
@@ -1111,5 +1112,64 @@ func TestSync_RecordsOutcomes(t *testing.T) {
 	}
 	if result.Skipped+result.Failed+result.Synced != 3 {
 		t.Errorf("counts do not add up: %+v", result)
+	}
+}
+
+func TestScanRepos_ReturnsWarningsInsteadOfPrinting(t *testing.T) {
+	root := t.TempDir()
+	reposDir := filepath.Join(root, "repos")
+	if err := os.MkdirAll(reposDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// A git repository without an origin remote is detected, with a warning.
+	noRemote := filepath.Join(reposDir, "local-only")
+	if err := os.MkdirAll(noRemote, 0755); err != nil {
+		t.Fatal(err)
+	}
+	initCmd := exec.Command("git", "init")
+	initCmd.Dir = noRemote
+	if out, err := initCmd.CombinedOutput(); err != nil {
+		t.Skipf("git init unavailable: %v\n%s", err, out)
+	}
+
+	ws := New(root, &config.Config{Workspace: "./repos"})
+	out := captureStdout(t, func() {
+		scan, err := ws.ScanRepos()
+		if err != nil {
+			t.Fatalf("ScanRepos() error = %v", err)
+		}
+		if len(scan.Repos) != 1 || scan.Repos[0].Name != "local-only" {
+			t.Errorf("Repos = %+v, want local-only", scan.Repos)
+		}
+		if len(scan.Warnings) != 1 || !strings.Contains(scan.Warnings[0], "no origin remote") {
+			t.Errorf("Warnings = %v, want one about the missing origin", scan.Warnings)
+		}
+	})
+	if out != "" {
+		t.Errorf("ScanRepos printed to stdout: %q", out)
+	}
+}
+
+func TestAdd_ProgressGoesToInjectedPrinter(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "target")
+	if err := os.MkdirAll(target, 0755); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	ws := New(root, &config.Config{Workspace: "./repos"})
+	ws.Printer = output.NewSyncPrinter(&buf, &buf)
+
+	repo := config.Repository{Name: "lib", Path: "lib", Type: config.RepoTypeSymlink, Source: target}
+	stdout := captureStdout(t, func() {
+		if err := ws.Add(repo); err != nil {
+			t.Fatalf("Add() error = %v", err)
+		}
+	})
+	if stdout != "" {
+		t.Errorf("Add printed to stdout despite injected printer: %q", stdout)
+	}
+	if !strings.Contains(buf.String(), "symlink created") {
+		t.Errorf("injected printer did not receive progress, got %q", buf.String())
 	}
 }

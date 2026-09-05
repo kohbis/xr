@@ -13,7 +13,6 @@ import (
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/git"
-	"github.com/kohbis/xr/internal/output"
 )
 
 type FileComparison struct {
@@ -45,6 +44,16 @@ type PatternResult struct {
 type HistoryResult struct {
 	Repo  string   `json:"repo"`
 	Lines []string `json:"lines"`
+	// Error is set when git log could not be run in the repository.
+	Error string `json:"error,omitempty"`
+}
+
+// GitDiffResult is the output of git diff in one repository.
+type GitDiffResult struct {
+	Repo   string `json:"repo"`
+	Output string `json:"output"`
+	// Error is set when git diff failed; Output then holds what git printed.
+	Error string `json:"error,omitempty"`
 }
 
 func CompareFile(cfg *config.Config, wsDir, fileName string, repoFilter []string) ([]FileComparison, error) {
@@ -175,7 +184,8 @@ func SearchHistoryResults(cfg *config.Config, wsDir, query string, repoFilter []
 		if err != nil {
 			results = append(results, HistoryResult{
 				Repo:  repo.Name,
-				Lines: []string{"(no git history available)"},
+				Lines: []string{},
+				Error: fmt.Sprintf("git log: %v", err),
 			})
 			continue
 		}
@@ -192,11 +202,14 @@ func SearchHistoryResults(cfg *config.Config, wsDir, query string, repoFilter []
 	return results, nil
 }
 
-// GitDiff runs git diff in each repository workspace directory, forwarding args to git diff.
-// Use an empty repoFilter to include all configured repos that exist on disk.
-func GitDiff(cfg *config.Config, wsDir string, repoFilter []string, gitArgs []string) error {
+// GitDiff runs git diff in each repository workspace directory, forwarding
+// args to git diff, and returns the output per repository in configuration
+// order. Use an empty repoFilter to include all configured repos that exist on
+// disk. git's exit status 1 (differences found) is not an error.
+func GitDiff(cfg *config.Config, wsDir string, repoFilter []string, gitArgs []string) []GitDiffResult {
 	gitCmd := append([]string{"-c", "core.pager=cat", "diff"}, gitArgs...)
 
+	var results []GitDiffResult
 	for _, repo := range cfg.Repositories {
 		if !repoMatchesFilter(repoFilter, repo.Name) {
 			continue
@@ -207,22 +220,18 @@ func GitDiff(cfg *config.Config, wsDir string, repoFilter []string, gitArgs []st
 			continue
 		}
 
-		output.PrintRepoHeader(repo.Name)
-
+		result := GitDiffResult{Repo: repo.Name}
 		out, err := git.RunCombinedOutput(repoPath, gitCmd...)
+		result.Output = string(out)
 		if err != nil {
 			var exitErr *exec.ExitError
-			if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
-				fmt.Print(string(out))
-				continue
+			if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+				result.Error = fmt.Sprintf("git diff: %v", err)
 			}
-			output.PrintWarning(fmt.Sprintf("git diff in %s: %v\n%s", repo.Name, err, string(out)))
-			continue
 		}
-		fmt.Print(string(out))
+		results = append(results, result)
 	}
-
-	return nil
+	return results
 }
 
 func DiffFiles(file1, file2 RepoFile) (string, error) {
