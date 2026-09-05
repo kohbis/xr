@@ -370,6 +370,30 @@ type SyncOptions struct {
 	// Sync falls back to sequential whenever ConfirmDirty or ConfirmCheckout is
 	// set, since prompts read from stdin and must not interleave.
 	Jobs int
+
+	// Quiet suppresses all progress output, including git's own. The outcome
+	// of each repository is still recorded in SyncResult.Repos, for callers
+	// rendering JSON.
+	Quiet bool
+}
+
+// Repository sync statuses reported in SyncOutcome.Status.
+const (
+	SyncStatusSynced  = "synced"
+	SyncStatusSkipped = "skipped"
+	SyncStatusFailed  = "failed"
+)
+
+// SyncOutcome records what happened to one repository during Sync.
+type SyncOutcome struct {
+	Name   string `json:"name"`
+	Type   string `json:"type"`
+	Status string `json:"status"` // synced, skipped, failed
+	// Detail is the skip reason or the error message, when applicable.
+	Detail string `json:"detail,omitempty"`
+	// Steps are the progress lines the repository produced, in order, so a
+	// machine-readable report carries the same information as the terminal.
+	Steps []output.SyncEvent `json:"steps"`
 }
 
 // SyncResult holds the outcome of a Sync operation.
@@ -377,14 +401,16 @@ type SyncResult struct {
 	Synced  int
 	Skipped int
 	Failed  int
+	Repos   []SyncOutcome
 }
 
 // record counts a repository outcome.
-func (r *SyncResult) record(skipped bool, err error) {
-	switch {
-	case err != nil:
+func (r *SyncResult) record(o SyncOutcome) {
+	r.Repos = append(r.Repos, o)
+	switch o.Status {
+	case SyncStatusFailed:
 		r.Failed++
-	case skipped:
+	case SyncStatusSkipped:
 		r.Skipped++
 	default:
 		r.Synced++
@@ -406,23 +432,48 @@ func (w *Workspace) Sync(repoNames []string, opts SyncOptions) (*SyncResult, err
 		targets = append(targets, repo)
 	}
 
-	type outcome struct {
-		skipped bool
-		err     error
-	}
-	outcomes := make([]outcome, len(targets))
+	outcomes := make([]SyncOutcome, len(targets))
 
-	parallel.Run(len(targets), w.syncJobs(opts, len(targets)), os.Stdout, os.Stderr,
+	var stdout, stderr io.Writer = os.Stdout, os.Stderr
+	if opts.Quiet {
+		stdout, stderr = io.Discard, io.Discard
+	}
+	parallel.Run(len(targets), w.syncJobs(opts, len(targets)), stdout, stderr,
 		func(i int, out, errW io.Writer) {
 			p := output.NewSyncPrinter(out, errW)
-			outcomes[i].skipped, outcomes[i].err = w.syncRepo(targets[i], wsDir, opts, p)
+			skipped, err := w.syncRepo(targets[i], wsDir, opts, p)
+			outcomes[i] = syncOutcome(targets[i], skipped, err, p.Events())
 		})
 
 	result := &SyncResult{}
 	for _, o := range outcomes {
-		result.record(o.skipped, o.err)
+		result.record(o)
 	}
 	return result, nil
+}
+
+// syncOutcome summarizes one repository's sync from its result and the
+// progress it printed.
+func syncOutcome(repo config.Repository, skipped bool, err error, steps []output.SyncEvent) SyncOutcome {
+	if steps == nil {
+		steps = []output.SyncEvent{}
+	}
+	o := SyncOutcome{Name: repo.Name, Type: string(repo.Type), Status: SyncStatusSynced, Steps: steps}
+	switch {
+	case err != nil:
+		o.Status = SyncStatusFailed
+		o.Detail = err.Error()
+	case skipped:
+		o.Status = SyncStatusSkipped
+		// The skip reason is the last skip line the repository printed.
+		for i := len(steps) - 1; i >= 0; i-- {
+			if steps[i].Kind == output.SyncEventSkip {
+				o.Detail = steps[i].Message
+				break
+			}
+		}
+	}
+	return o
 }
 
 // syncJobs resolves the effective worker count for n repositories.

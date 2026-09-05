@@ -14,6 +14,8 @@ var (
 	syncUpdate                bool
 	syncCloneMissing          bool
 	syncJobs                  int
+	syncJSON                  bool
+	syncReport                string
 )
 
 func effectiveSyncNetwork() (fetch, pull bool) {
@@ -45,4 +47,6 @@ func registerSyncFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&syncCreateBranchIfMissing, "create-branch-if-missing", false, "create local branch when missing (from current HEAD)")
 	cmd.Flags().BoolVar(&syncCloneMissing, "clone-missing", false, "clone repositories missing from the workspace and recreate missing symlinks")
 	cmd.Flags().IntVarP(&syncJobs, "jobs", "j", 1, "number of repositories to sync concurrently (disables prompts above 1)")
+	cmd.Flags().BoolVar(&syncJSON, "json", false, "output in JSON format (disables prompts)")
+	cmd.Flags().StringVar(&syncReport, "report", "", "write JSON report to file")
 }

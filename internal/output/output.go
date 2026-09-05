@@ -154,6 +154,31 @@ func PrintDiffLine(line string) {
 type SyncPrinter struct {
 	w    io.Writer
 	errW io.Writer
+
+	events []SyncEvent
+}
+
+// SyncEvent is one progress line rendered by a SyncPrinter, kept so callers
+// can report the same steps in machine-readable form.
+type SyncEvent struct {
+	Kind    string `json:"kind"` // action, ok, skip, fail
+	Message string `json:"message"`
+}
+
+const (
+	SyncEventAction = "action"
+	SyncEventOK     = "ok"
+	SyncEventSkip   = "skip"
+	SyncEventFail   = "fail"
+)
+
+// Events returns the progress lines rendered so far, in order.
+func (p *SyncPrinter) Events() []SyncEvent {
+	return p.events
+}
+
+func (p *SyncPrinter) record(kind, msg string) {
+	p.events = append(p.events, SyncEvent{Kind: kind, Message: msg})
 }
 
 // NewSyncPrinter returns a printer whose progress lines go to out. Subprocess
@@ -181,21 +206,25 @@ func (p *SyncPrinter) Header(name, repoType string) {
 
 // Skip prints a skip message for repos that don't need syncing.
 func (p *SyncPrinter) Skip(reason string) {
+	p.record(SyncEventSkip, reason)
 	_, _ = fmt.Fprintf(p.w, "  %s⊘ %s%s\n", c(colorDim), reason, c(colorReset))
 }
 
 // OK prints a success message for a sync step.
 func (p *SyncPrinter) OK(msg string) {
+	p.record(SyncEventOK, msg)
 	_, _ = fmt.Fprintf(p.w, "  %s✓ %s%s\n", c(colorGreen), msg, c(colorReset))
 }
 
 // Action prints an action being performed.
 func (p *SyncPrinter) Action(msg string) {
+	p.record(SyncEventAction, msg)
 	_, _ = fmt.Fprintf(p.w, "  %s→%s %s\n", c(colorBlue), c(colorReset), msg)
 }
 
 // Fail prints a failure message for a sync step.
 func (p *SyncPrinter) Fail(msg string) {
+	p.record(SyncEventFail, msg)
 	_, _ = fmt.Fprintf(p.w, "  %s✗ %s%s\n", c(colorRed), msg, c(colorReset))
 }
 

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -930,7 +931,7 @@ func TestSyncConcurrent_OutputMatchesSequential(t *testing.T) {
 	if got, want := syncLines(parOut), syncLines(seqOut); got != want {
 		t.Errorf("concurrent output differs from sequential\n--- sequential ---\n%s\n--- concurrent ---\n%s", want, got)
 	}
-	if parResult != seqResult {
+	if !reflect.DeepEqual(parResult, seqResult) {
 		t.Errorf("concurrent result = %+v, sequential = %+v", parResult, seqResult)
 	}
 	if seqResult.Synced != len(sources) || seqResult.Failed != 1 {
@@ -1056,4 +1057,59 @@ func captureStreams(t *testing.T, fn func()) (string, string) {
 		t.Fatal(err)
 	}
 	return <-outCh, <-errCh
+}
+
+func TestSync_RecordsOutcomes(t *testing.T) {
+	root := t.TempDir()
+	reposDir := filepath.Join(root, "repos")
+	if err := os.MkdirAll(reposDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// A symlink repo pointing at a plain directory is skipped as "not a git
+	// repository"; a missing clone without CloneMissing is skipped too; a
+	// symlink repo whose path is occupied by a real directory fails.
+	target := filepath.Join(root, "plain")
+	if err := os.MkdirAll(target, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(reposDir, "linked")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(reposDir, "broken"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Repositories: []config.Repository{
+			{Name: "linked", Path: "linked", Type: config.RepoTypeSymlink, Source: target},
+			{Name: "absent", Path: "absent", Type: config.RepoTypeClone, Source: "https://example.invalid/absent.git"},
+			{Name: "broken", Path: "broken", Type: config.RepoTypeSymlink, Source: target},
+		},
+	}
+	ws := New(root, cfg)
+
+	result, err := ws.Sync(nil, SyncOptions{Quiet: true})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if len(result.Repos) != 3 {
+		t.Fatalf("got %d outcomes, want 3: %+v", len(result.Repos), result.Repos)
+	}
+	if got := result.Repos[0]; got.Name != "linked" || got.Status != SyncStatusSkipped || got.Detail != "not a git repository" {
+		t.Errorf("linked outcome = %+v", got)
+	}
+	if got := result.Repos[1]; got.Name != "absent" || got.Status != SyncStatusSkipped || !strings.Contains(got.Detail, "missing") {
+		t.Errorf("absent outcome = %+v", got)
+	}
+	if got := result.Repos[2]; got.Name != "broken" || got.Status != SyncStatusFailed || !strings.Contains(got.Detail, "not a symlink") {
+		t.Errorf("broken outcome = %+v", got)
+	}
+	for _, o := range result.Repos {
+		if o.Steps == nil {
+			t.Errorf("%s: Steps is nil, want empty slice for JSON", o.Name)
+		}
+	}
+	if result.Skipped+result.Failed+result.Synced != 3 {
+		t.Errorf("counts do not add up: %+v", result)
+	}
 }

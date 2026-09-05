@@ -27,6 +27,8 @@ Sync options:
   --clone-missing  clone repositories missing from the workspace
   --jobs N / -j N  sync N repositories concurrently
   --dry-run        preview only
+  --json           print a JSON result instead of progress output
+  --report PATH    additionally write the JSON result to a file
 
 Always switches to the branch in repos.yaml.
 Use --allow-dirty to proceed on dirty repos without prompting (recommended with --non-interactive).
@@ -63,7 +65,11 @@ Examples:
   xr repo sync --clone-missing --update --non-interactive --allow-dirty
 
   # Bootstrap a large workspace with 8 repositories in flight
-  xr repo sync --clone-missing --update -j 8 --allow-dirty`,
+  xr repo sync --clone-missing --update -j 8 --allow-dirty
+
+  # Machine-readable result for a pipeline
+  xr repo sync --update --allow-dirty --json
+  xr repo sync --update --allow-dirty --report sync-report.json`,
 	ValidArgsFunction: shellcomp.CompleteRepoNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runSync(cmd, args)
@@ -81,10 +87,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if syncDryRun {
-		fmt.Printf("Previewing workspace sync (no changes will be made).\n")
-	} else {
-		fmt.Printf("Syncing workspace...\n")
+	if !syncJSON {
+		if syncDryRun {
+			fmt.Printf("Previewing workspace sync (no changes will be made).\n")
+		} else {
+			fmt.Printf("Syncing workspace...\n")
+		}
 	}
 
 	ws := workspace.New(filepath.Dir(cfgPath), cfg)
@@ -95,6 +103,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 	// Concurrent workers cannot share stdin, so --jobs opts out of prompting the
 	// same way --non-interactive does.
 	if syncJobs > 1 {
+		shouldPrompt = false
+	}
+	// JSON goes to stdout, where a prompt would corrupt it.
+	if syncJSON {
 		shouldPrompt = false
 	}
 
@@ -109,6 +121,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		CreateBranchIfMissing: syncCreateBranchIfMissing,
 		CloneMissing:          syncCloneMissing,
 		Jobs:                  syncJobs,
+		Quiet:                 syncJSON,
 	}
 	yesFlag := interactive.Yes(cmd)
 	// --yes proceeds on every dirty repository, which is what --allow-dirty does.
@@ -151,6 +164,18 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("syncing workspace: %w", err)
 	}
 
+	if syncReport != "" {
+		if err := output.WriteJSONFile(syncReport, syncResultJSON(result, opts.DryRun)); err != nil {
+			return fmt.Errorf("writing report: %w", err)
+		}
+	}
+	if syncJSON {
+		if err := output.PrintJSON(syncResultJSON(result, opts.DryRun)); err != nil {
+			return err
+		}
+		return syncExitCode(cmd, result)
+	}
+
 	if opts.DryRun {
 		fmt.Printf("\nPreview done: %d repo(s)\n", result.Skipped)
 		fmt.Printf("To execute: rerun without --dry-run\n")
@@ -161,6 +186,36 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 	output.PrintSyncSummary(result.Synced, result.Skipped, result.Failed)
 	return syncExitCode(cmd, result)
+}
+
+// syncResultJSON renders a sync result in the shared machine-readable shape.
+// Per-repository steps are the same lines the terminal output shows.
+func syncResultJSON(result *workspace.SyncResult, dryRun bool) output.CommandResult {
+	repos := make([]output.RepoResult, 0, len(result.Repos))
+	for _, r := range result.Repos {
+		rr := output.RepoResult{Name: r.Name, Status: r.Status}
+		if r.Status == workspace.SyncStatusFailed {
+			rr.Error = r.Detail
+		}
+		repos = append(repos, rr)
+	}
+	outcomes := result.Repos
+	if outcomes == nil {
+		outcomes = []workspace.SyncOutcome{}
+	}
+	return output.CommandResult{
+		Command: "repo sync",
+		Summary: map[string]int{
+			"synced":  result.Synced,
+			"skipped": result.Skipped,
+			"failed":  result.Failed,
+		},
+		Repos: repos,
+		Data: map[string]any{
+			"dry_run": dryRun,
+			"repos":   outcomes,
+		},
+	}
 }
 
 // syncExitCode makes the process exit non-zero when repositories failed to
