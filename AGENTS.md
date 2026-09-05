@@ -172,6 +172,7 @@ When adding/changing commands that prompt users, provide explicit non-interactiv
 - `xr worktree add`: prompts for repositories when `--repo` is omitted; `--non-interactive` requires `--repo`.
 - `xr worktree remove` / `prune --gone`: `--yes` confirms. Note `--force` here keeps git's meaning (discard uncommitted changes), unlike `xr repo remove --force`.
 - `xr init`: interactive only; `--non-interactive` returns an error (use `xr repo sync --clone-missing`).
+- `xr repo gitignore`: `--yes` adds the entry without prompting; without a prompt available it returns an error rather than leaving `.gitignore` untouched.
 - `xr exec`: never prompts. It runs the command directly (no shell), skips repositories missing from the workspace, and exits non-zero via `internal/exitcode` when the command failed anywhere. `--jobs` uses `internal/parallel` to buffer per-repository output and flush it in configuration order.
 
 ### Exit status
@@ -198,6 +199,12 @@ Follow Conventional Commits format as seen in the git log:
 type(scope): description
 ```
 Common types: `feat`, `fix`, `refactor`, `test`, `docs`, `build`, `chore`.
+
+Keep commit messages and pull request descriptions to the change itself. Do not
+add tool or session links (for example a Claude Code session URL): they are
+noise in the history, and a session link is an internal reference that does not
+belong in a public repository. Authorship belongs in a `Co-Authored-By` trailer,
+so a pull request description does not need to repeat it.
 
 ## Dependencies
 

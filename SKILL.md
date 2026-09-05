@@ -227,10 +227,11 @@ xr tree --depth 0                  # unlimited depth
 ### .gitignore management (`xr repo gitignore`)
 
 ```sh
-xr repo gitignore
+xr repo gitignore          # prompts for confirmation
+xr repo gitignore --yes    # add the entry unattended
 ```
 
-Interactively adds the workspace directory to `.gitignore`. Useful after `xr init` to prevent committing the workspace directory from the parent repo.
+Adds the workspace directory to the `.gitignore` next to `repos.yaml`. Useful after `xr init` to prevent committing the workspace directory from the parent repo. Without `--yes` and without a terminal to prompt on, the command fails instead of quietly doing nothing.
 
 ---
 
