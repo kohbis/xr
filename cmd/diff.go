@@ -163,37 +163,48 @@ func runDiffPattern(pattern string) error {
 		return err
 	}
 
-	occurrences, err := diff.SearchPattern(cfg, wsDir, pattern, diffRepo)
+	results, err := diff.SearchPattern(cfg, wsDir, pattern, diffRepo)
 	if err != nil {
 		return fmt.Errorf("searching pattern: %w", err)
 	}
 
 	total := 0
-	repos := make([]output.RepoResult, 0, len(occurrences))
-	for repoName, matches := range occurrences {
-		total += len(matches)
+	repos := make([]output.RepoResult, 0, len(results))
+	// Keyed by repository for compatibility with earlier report consumers; the
+	// human-readable listing below follows configuration order.
+	occurrences := make(map[string][]diff.PatternOccurrence, len(results))
+	for _, r := range results {
+		total += len(r.Matches)
 		status := "matched"
-		if len(matches) == 0 {
+		switch {
+		case r.Error != "":
+			status = "failed"
+		case len(r.Matches) == 0:
 			status = "no_matches"
 		}
-		repos = append(repos, output.RepoResult{Name: repoName, Status: status, Metrics: map[string]int{"matches": len(matches)}})
+		repos = append(repos, output.RepoResult{Name: r.Repo, Status: status, Error: r.Error, Metrics: map[string]int{"matches": len(r.Matches)}})
+		occurrences[r.Repo] = r.Matches
 	}
 
 	result := output.CommandResult{
 		Command: "diff pattern",
-		Summary: map[string]int{"repos": len(occurrences), "matches": total},
+		Summary: map[string]int{"repos": len(results), "matches": total},
 		Repos:   repos,
 		Data:    map[string]any{"occurrences": occurrences},
 	}
 
 	if !diffJSON && diffReport == "" {
-		for repoName, matches := range occurrences {
-			output.PrintRepoHeader(repoName)
-			if len(matches) == 0 {
+		for _, r := range results {
+			output.PrintRepoHeader(r.Repo)
+			if r.Error != "" {
+				output.PrintWarning(fmt.Sprintf("searching %s: %s", r.Repo, r.Error))
+				continue
+			}
+			if len(r.Matches) == 0 {
 				fmt.Println("  (no matches)")
 				continue
 			}
-			for _, m := range matches {
+			for _, m := range r.Matches {
 				fmt.Printf("  %s:%d: %s\n", m.File, m.Line, strings.TrimSpace(m.Content))
 			}
 		}
@@ -209,13 +220,21 @@ func runDiffHistory(query string) error {
 		return err
 	}
 
-	if !diffJSON && diffReport == "" {
-		return diff.SearchHistory(cfg, wsDir, query, diffRepo)
-	}
-
 	history, err := diff.SearchHistoryResults(cfg, wsDir, query, diffRepo)
 	if err != nil {
 		return err
+	}
+
+	if !diffJSON && diffReport == "" {
+		for _, h := range history {
+			output.PrintRepoHeader(h.Repo)
+			if len(h.Lines) == 0 {
+				fmt.Println("  (no matches)")
+				continue
+			}
+			fmt.Println(strings.Join(h.Lines, "\n"))
+		}
+		return nil
 	}
 
 	repos := make([]output.RepoResult, 0, len(history))

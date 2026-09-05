@@ -41,6 +41,7 @@ Examples:
 			return err
 		}
 
+		var failed []output.RepoResult
 		opts := search.Options{
 			Pattern:    args[0],
 			Glob:       searchGlob,
@@ -48,6 +49,12 @@ Examples:
 			Context:    searchContext,
 			UseRegex:   searchRegex,
 			RepoFilter: searchRepo,
+			OnRepoError: func(repo string, err error) {
+				failed = append(failed, output.RepoResult{Name: repo, Status: "failed", Error: err.Error()})
+				if !searchJSON {
+					output.PrintWarning(fmt.Sprintf("searching %s: %v", repo, err))
+				}
+			},
 		}
 
 		matches, err := search.Search(cfg, wsDir, opts)
@@ -55,19 +62,25 @@ Examples:
 			return fmt.Errorf("search failed: %w", err)
 		}
 		repoCounts := make(map[string]int)
+		var repoOrder []string
 		for _, m := range matches {
-			if !m.IsContext {
-				repoCounts[m.Repo]++
+			if m.IsContext {
+				continue
 			}
+			if _, seen := repoCounts[m.Repo]; !seen {
+				repoOrder = append(repoOrder, m.Repo)
+			}
+			repoCounts[m.Repo]++
 		}
-		repoResults := make([]output.RepoResult, 0, len(repoCounts))
-		for name, c := range repoCounts {
+		repoResults := make([]output.RepoResult, 0, len(repoCounts)+len(failed))
+		for _, name := range repoOrder {
 			repoResults = append(repoResults, output.RepoResult{
 				Name:    name,
 				Status:  "matched",
-				Metrics: map[string]int{"matches": c},
+				Metrics: map[string]int{"matches": repoCounts[name]},
 			})
 		}
+		repoResults = append(repoResults, failed...)
 		result := output.CommandResult{
 			Command: "search",
 			Summary: map[string]int{

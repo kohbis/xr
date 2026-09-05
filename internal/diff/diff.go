@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -33,6 +34,14 @@ type PatternOccurrence struct {
 	Line    int
 }
 
+// PatternResult holds the occurrences of a pattern in one repository. Error
+// is set when the repository could not be scanned; Matches is then empty.
+type PatternResult struct {
+	Repo    string              `json:"repo"`
+	Matches []PatternOccurrence `json:"matches"`
+	Error   string              `json:"error,omitempty"`
+}
+
 type HistoryResult struct {
 	Repo  string   `json:"repo"`
 	Lines []string `json:"lines"`
@@ -52,12 +61,9 @@ func CompareFile(cfg *config.Config, wsDir, fileName string, repoFilter []string
 		}
 
 		var found []string
-		err := filepath.Walk(repoPath, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return nil
-			}
-			if !info.IsDir() && info.Name() == fileName {
-				found = append(found, path)
+		err := walkFiles(repoPath, walkOptions{}, func(rel, abs string) error {
+			if path.Base(rel) == fileName {
+				found = append(found, abs)
 			}
 			return nil
 		})
@@ -89,14 +95,16 @@ func CompareFile(cfg *config.Config, wsDir, fileName string, repoFilter []string
 	return comparisons, nil
 }
 
-func SearchPattern(cfg *config.Config, wsDir, pattern string, repoFilter []string) (map[string][]PatternOccurrence, error) {
-	result := make(map[string][]PatternOccurrence)
-
+// SearchPattern reports where pattern occurs in each repository, in the order
+// the repositories are configured. Repositories missing from the workspace are
+// left out; a repository that could not be scanned is reported with Error set.
+func SearchPattern(cfg *config.Config, wsDir, pattern string, repoFilter []string) ([]PatternResult, error) {
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil, fmt.Errorf("invalid pattern: %w", err)
 	}
 
+	var results []PatternResult
 	for _, repo := range cfg.Repositories {
 		if !repoMatchesFilter(repoFilter, repo.Name) {
 			continue
@@ -106,31 +114,23 @@ func SearchPattern(cfg *config.Config, wsDir, pattern string, repoFilter []strin
 			continue
 		}
 
-		var occurrences []PatternOccurrence
-		err := filepath.Walk(repoPath, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() {
-				return nil
-			}
-			if strings.HasPrefix(info.Name(), ".") {
-				return nil
-			}
-
-			f, err := os.Open(path)
+		result := PatternResult{Repo: repo.Name, Matches: []PatternOccurrence{}}
+		err := walkFiles(repoPath, walkOptions{skipHidden: true}, func(rel, abs string) error {
+			f, err := os.Open(abs)
 			if err != nil {
 				return nil
 			}
 			defer func() { _ = f.Close() }()
 
-			relPath := strings.TrimPrefix(path, repoPath+"/")
 			scanner := bufio.NewScanner(f)
 			lineNum := 0
 			for scanner.Scan() {
 				lineNum++
 				line := scanner.Text()
 				if re.MatchString(line) {
-					occurrences = append(occurrences, PatternOccurrence{
+					result.Matches = append(result.Matches, PatternOccurrence{
 						Repo:    repo.Name,
-						File:    relPath,
+						File:    rel,
 						Line:    lineNum,
 						Content: line,
 					})
@@ -139,14 +139,12 @@ func SearchPattern(cfg *config.Config, wsDir, pattern string, repoFilter []strin
 			return nil
 		})
 		if err != nil {
-			output.PrintWarning(fmt.Sprintf("searching %s: %v", repo.Name, err))
-			continue
+			result.Error = err.Error()
 		}
-
-		result[repo.Name] = occurrences
+		results = append(results, result)
 	}
 
-	return result, nil
+	return results, nil
 }
 
 func repoMatchesFilter(filter []string, name string) bool {
@@ -159,24 +157,6 @@ func repoMatchesFilter(filter []string, name string) bool {
 		}
 	}
 	return false
-}
-
-// SearchHistory runs git log --grep in each repository (optionally limited by repoFilter).
-func SearchHistory(cfg *config.Config, wsDir, query string, repoFilter []string) error {
-	results, err := SearchHistoryResults(cfg, wsDir, query, repoFilter)
-	if err != nil {
-		return err
-	}
-	for _, repoRes := range results {
-		output.PrintRepoHeader(repoRes.Repo)
-		if len(repoRes.Lines) == 0 {
-			fmt.Printf("  (no matches)\n")
-			continue
-		}
-		fmt.Print(strings.Join(repoRes.Lines, "\n"))
-		fmt.Println()
-	}
-	return nil
 }
 
 func SearchHistoryResults(cfg *config.Config, wsDir, query string, repoFilter []string) ([]HistoryResult, error) {

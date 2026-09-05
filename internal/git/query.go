@@ -47,3 +47,21 @@ func CheckIgnore(repoPath string, path string) (bool, error) {
 	}
 	return false, err
 }
+
+// ListFiles returns the paths, relative to repoPath, of the files git knows
+// about in the repository: tracked files plus untracked files that are not
+// ignored. It is the file set a user would expect a cross-repository scan to
+// cover, since ignored build output and vendored trees are excluded.
+func ListFiles(repoPath string) ([]string, error) {
+	out, err := runGitOutput(repoPath, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, p := range strings.Split(string(out), "\x00") {
+		if p != "" {
+			files = append(files, p)
+		}
+	}
+	return files, nil
+}

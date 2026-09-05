@@ -43,15 +43,99 @@ func TestSearchPattern_MatchesAcrossRepos(t *testing.T) {
 		t.Fatalf("got results for %d repos, want 2", len(result))
 	}
 
-	for _, name := range []string{"repo-a", "repo-b"} {
-		occs, ok := result[name]
-		if !ok {
-			t.Errorf("missing results for %s", name)
+	for i, name := range []string{"repo-a", "repo-b"} {
+		if result[i].Repo != name {
+			t.Errorf("result[%d].Repo = %q, want %q (configuration order)", i, result[i].Repo, name)
 			continue
 		}
-		if len(occs) != 1 {
-			t.Errorf("repo %s: got %d occurrences, want 1", name, len(occs))
+		if len(result[i].Matches) != 1 {
+			t.Errorf("repo %s: got %d occurrences, want 1", name, len(result[i].Matches))
 		}
+	}
+}
+
+func TestSearchPattern_KeepsConfigurationOrder(t *testing.T) {
+	dir := t.TempDir()
+	reposDir := filepath.Join(dir, "repos")
+	names := []string{"zeta", "alpha", "mid", "beta", "omega"}
+	var repos []config.Repository
+	for _, name := range names {
+		repoDir := filepath.Join(reposDir, name)
+		if err := os.MkdirAll(repoDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repoDir, "f.txt"), []byte("needle\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		repos = append(repos, config.Repository{Name: name, Path: name, Type: config.RepoTypeClone})
+	}
+	cfg := &config.Config{Workspace: "./repos", Repositories: repos}
+
+	for range 5 {
+		result, err := SearchPattern(cfg, reposDir, "needle", nil)
+		if err != nil {
+			t.Fatalf("SearchPattern() error = %v", err)
+		}
+		var got []string
+		for _, r := range result {
+			got = append(got, r.Repo)
+		}
+		if strings.Join(got, ",") != strings.Join(names, ",") {
+			t.Fatalf("order = %v, want %v", got, names)
+		}
+	}
+}
+
+func TestSearchPattern_SkipsGitDirAndIgnoredFiles(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := t.TempDir()
+	reposDir := filepath.Join(dir, "repos")
+	repoDir := filepath.Join(reposDir, "proj")
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	gitInitOrSkip(t, repoDir)
+	if err := os.WriteFile(filepath.Join(repoDir, ".gitignore"), []byte("build/\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "main.go"), []byte("needle\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repoDir, "build"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "build", "out.txt"), []byte("needle\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Something inside .git that would match if the directory were scanned.
+	if err := os.WriteFile(filepath.Join(repoDir, ".git", "description"), []byte("needle\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Workspace:    "./repos",
+		Repositories: []config.Repository{{Name: "proj", Path: "proj", Type: config.RepoTypeClone}},
+	}
+
+	result, err := SearchPattern(cfg, reposDir, "needle", nil)
+	if err != nil {
+		t.Fatalf("SearchPattern() error = %v", err)
+	}
+	if len(result) != 1 {
+		t.Fatalf("got %d results, want 1", len(result))
+	}
+	if len(result[0].Matches) != 1 || result[0].Matches[0].File != "main.go" {
+		t.Errorf("matches = %+v, want only main.go", result[0].Matches)
+	}
+
+	comparisons, err := CompareFile(cfg, reposDir, "out.txt", nil)
+	if err != nil {
+		t.Fatalf("CompareFile() error = %v", err)
+	}
+	if len(comparisons) != 0 {
+		t.Errorf("CompareFile found ignored file: %+v", comparisons)
 	}
 }
 
@@ -93,9 +177,8 @@ func TestSearchPattern_SkipsHiddenFiles(t *testing.T) {
 		t.Fatalf("SearchPattern() error = %v", err)
 	}
 
-	occs := result["proj"]
-	if len(occs) != 1 {
-		t.Errorf("got %d occurrences, want 1 (hidden file should be skipped)", len(occs))
+	if len(result) != 1 || len(result[0].Matches) != 1 {
+		t.Errorf("got %+v, want exactly 1 occurrence (hidden file should be skipped)", result)
 	}
 }
 
@@ -112,8 +195,8 @@ func TestSearchPattern_SkipsMissingRepo(t *testing.T) {
 		t.Fatalf("SearchPattern() error = %v", err)
 	}
 
-	if len(result["ghost"]) != 0 {
-		t.Error("expected no results for missing repo")
+	if len(result) != 0 {
+		t.Errorf("expected no results for missing repo, got %+v", result)
 	}
 }
 
@@ -268,7 +351,7 @@ func TestSearchPattern_RegexMatch(t *testing.T) {
 		t.Fatalf("SearchPattern() error = %v", err)
 	}
 
-	occs := result["proj"]
+	occs := result[0].Matches
 	if len(occs) != 2 {
 		t.Errorf("got %d regex occurrences, want 2", len(occs))
 	}
@@ -298,7 +381,7 @@ func TestSearchPattern_LineNumbers(t *testing.T) {
 		t.Fatalf("SearchPattern() error = %v", err)
 	}
 
-	occs := result["proj"]
+	occs := result[0].Matches
 	if len(occs) != 1 {
 		t.Fatalf("got %d occurrences, want 1", len(occs))
 	}
