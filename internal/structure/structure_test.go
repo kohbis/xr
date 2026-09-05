@@ -1,7 +1,6 @@
 package structure
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -196,30 +195,7 @@ func TestAnalyzeRepo_DepFileMarkedIsDep(t *testing.T) {
 	}
 }
 
-func capturePrintTree(t *testing.T, info *RepoInfo) string {
-	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stdout = w
-
-	PrintTree(info)
-
-	if err := w.Close(); err != nil {
-		t.Fatal(err)
-	}
-	os.Stdout = old
-
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatal(err)
-	}
-	return buf.String()
-}
-
-func TestPrintTree_Output(t *testing.T) {
+func TestRender_Output(t *testing.T) {
 	info := &RepoInfo{
 		Name:      "test-repo",
 		Language:  "Go",
@@ -235,11 +211,15 @@ func TestPrintTree_Output(t *testing.T) {
 		},
 	}
 
-	output := capturePrintTree(t, info)
+	output := Render(info)
 
-	expected := "test-repo [Go] (main abc123)"
-	if !bytes.Contains([]byte(output), []byte(expected)) {
-		t.Errorf("PrintTree output missing header. got:\n%s", output)
+	want := "test-repo [Go] (main abc123)\n" +
+		"├── src\n" +
+		"│   └── main.go\n" +
+		"├── go.mod\n" +
+		"└── README.md\n"
+	if output != want {
+		t.Errorf("Render() =\n%s\nwant:\n%s", output, want)
 	}
 }
 

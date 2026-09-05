@@ -142,14 +142,20 @@ Type inference in `normalize()`: local paths (starting with `/` or `~`) default 
 
 Use helpers from `internal/output` for consistent terminal formatting and machine-readable output. The package now provides:
 - ANSI-colored output helpers for human-readable CLI output
-- `SyncPrinter`, a writer-backed renderer for sync progress; the package-level `PrintSync*` helpers are thin wrappers writing to stdout
+- `SyncPrinter`, a writer-backed renderer for step-by-step progress (`Header`, `Action`, `OK`, `Skip`, `Fail`) that also records what it rendered, so the same steps can be reported as JSON
 - shared result models (`CommandResult`, `RepoResult`) for JSON/report output
 - JSON helpers (`PrintJSON`, `WriteJSONFile`) for command output and file reports
 
 Global output controls:
 - `--no-color` disables ANSI escape sequences for automation logs.
 
-Do not use `fmt.Println` directly for user-visible output in `internal/` packages — return strings or use the output helpers.
+`internal/` packages must not write to stdout or stderr on their own — a command with `--json` has to keep stdout clean, and tests should not have to capture pipes. Give the caller the content instead, in whichever of these three shapes fits:
+
+- **return the rendered text**, for pure formatting (`structure.Render`);
+- **return a result**, for per-repository work whose outcome the caller reports or serializes (`worktree.Result`, `workspace.ScanResult.Warnings`, `diff.GitDiffResult`, `diff.PatternResult.Error`, `search.Options.OnRepoError`);
+- **take an injected writer or printer**, for long-running progress that must stream (`workspace.Workspace.Printer`, the `*output.SyncPrinter` passed through sync).
+
+Failures belong in the returned result as an `Error` field rather than as a placeholder string inside the data (never `"(no git history available)"` in a results slice), so the `cmd/` layer can decide between a warning, a JSON `status: failed`, and the exit status.
 
 ### Non-interactive and automation flags
 

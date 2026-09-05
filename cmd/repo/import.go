@@ -10,6 +10,7 @@ import (
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/interactive"
+	"github.com/kohbis/xr/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -40,10 +41,14 @@ instead of waiting for input (requires --yes to write).`,
 			cfg = &config.Config{Workspace: "./repos", Path: absCfgPath}
 		}
 
-		found, err := newWorkspace(cfg).ScanRepos()
+		scan, err := newWorkspace(cfg).ScanRepos()
 		if err != nil {
 			return fmt.Errorf("scanning workspace: %w", err)
 		}
+		for _, warning := range scan.Warnings {
+			output.PrintWarning(warning)
+		}
+		found := scan.Repos
 
 		existing := make(map[string]struct{}, len(cfg.Repositories))
 		for _, r := range cfg.Repositories {

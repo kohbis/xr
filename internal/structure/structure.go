@@ -186,10 +186,14 @@ func walkDir(dirPath string, node *Node, rootPath string, ignore *gitIgnoreCheck
 	return nil
 }
 
-func PrintTree(info *RepoInfo) {
-	fmt.Printf("%s", info.Name)
+// Render returns the tree view of info: a header line with the repository
+// name, detected language and git summary, followed by its children drawn
+// with box-drawing connectors. The result ends with a newline.
+func Render(info *RepoInfo) string {
+	var b strings.Builder
+	b.WriteString(info.Name)
 	if info.Language != "" {
-		fmt.Printf(" [%s]", info.Language)
+		fmt.Fprintf(&b, " [%s]", info.Language)
 	}
 
 	meta := []string{}
@@ -203,14 +207,15 @@ func PrintTree(info *RepoInfo) {
 		meta = append(meta, "dirty")
 	}
 	if len(meta) > 0 {
-		fmt.Printf(" (%s)", strings.Join(meta, " "))
+		fmt.Fprintf(&b, " (%s)", strings.Join(meta, " "))
 	}
-	fmt.Println()
+	b.WriteString("\n")
 
-	printNodes(info.Children, "")
+	renderNodes(&b, info.Children, "")
+	return b.String()
 }
 
-func printNodes(nodes []*Node, prefix string) {
+func renderNodes(b *strings.Builder, nodes []*Node, prefix string) {
 	for i, node := range nodes {
 		isLast := i == len(nodes)-1
 		connector := "├── "
@@ -219,10 +224,10 @@ func printNodes(nodes []*Node, prefix string) {
 			connector = "└── "
 			childPrefix = prefix + "    "
 		}
-		fmt.Printf("%s%s%s\n", prefix, connector, node.Name)
+		fmt.Fprintf(b, "%s%s%s\n", prefix, connector, node.Name)
 
 		if node.IsDir && len(node.Children) > 0 {
-			printNodes(node.Children, childPrefix)
+			renderNodes(b, node.Children, childPrefix)
 		}
 	}
 }
