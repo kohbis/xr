@@ -101,8 +101,10 @@ func PrintMatchSimple(repo, file string, line int, content string, isContext boo
 	}
 }
 
+// PrintWarning prints a warning to stderr, so it stays out of the stdout a
+// caller may pipe or redirect (search and diff results, --json output).
 func PrintWarning(msg string) {
-	fmt.Printf("%swarning: %s%s\n", c(colorYellow), msg, c(colorReset))
+	fmt.Fprintf(os.Stderr, "%swarning: %s%s\n", c(colorYellow), msg, c(colorReset))
 }
 
 func PrintDiffLine(line string) {

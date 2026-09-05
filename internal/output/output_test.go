@@ -30,6 +30,29 @@ func captureStdout(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+
+	fn()
+
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = old
+
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatal(err)
+	}
+	return buf.String()
+}
+
 func TestPrintDiffLine_AddedLine(t *testing.T) {
 	out := captureStdout(t, func() {
 		PrintDiffLine("+added line")
@@ -96,7 +119,7 @@ func TestPrintRepoHeader_ContainsName(t *testing.T) {
 }
 
 func TestPrintWarning_Format(t *testing.T) {
-	out := captureStdout(t, func() {
+	out := captureStderr(t, func() {
 		PrintWarning("something went wrong")
 	})
 
@@ -108,6 +131,18 @@ func TestPrintWarning_Format(t *testing.T) {
 	}
 	if !strings.Contains(out, colorYellow) {
 		t.Error("warning should be yellow")
+	}
+}
+
+func TestPrintWarning_KeepsStdoutClean(t *testing.T) {
+	out := captureStdout(t, func() {
+		_ = captureStderr(t, func() {
+			PrintWarning("something went wrong")
+		})
+	})
+
+	if out != "" {
+		t.Errorf("warning must not reach stdout, got %q", out)
 	}
 }
 
