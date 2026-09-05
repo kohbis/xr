@@ -173,7 +173,9 @@ Prefer a consistent automation story across commands:
 - `--report <path>` for structured file output when the command produces aggregate results (for example, selected `xr diff` modes)
 - include per-repository status and summary counts when applicable
 
-**Current behavior:** `--json` is implemented on `xr repo list`, `xr search`, `xr exec`, `xr worktree list` / `add` / `remove` / `prune`, and `xr diff file` / `pattern` / `history`. `--report` is implemented on those `xr diff` subcommands only. `xr repo sync` does not yet expose `--json` or `--report` (planned for a later CLI cleanup phase).
+**Current behavior:** `--json` is implemented on `xr repo list`, `xr repo sync`, `xr search`, `xr exec`, `xr worktree list` / `add` / `remove` / `prune`, and `xr diff file` / `pattern` / `history`. `--report` is implemented on `xr repo sync` and those `xr diff` subcommands. `xr repo sync --json` sets `SyncOptions.Quiet` and reads per-repository outcomes from `SyncResult.Repos`, which `output.SyncPrinter` records as it prints; it also disables prompts.
+
+Warnings from `internal/` scans must not be printed from inside the package: `internal/search` reports per-repository errors through `Options.OnRepoError` and `internal/diff.SearchPattern` returns them in `PatternResult.Error`, so the `cmd/` layer can keep `--json` output clean. `internal/diff` scans only the files git knows about (`git.ListFiles`: tracked plus untracked, not ignored) and returns results in configuration order.
 
 ### Commit messages
 
