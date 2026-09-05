@@ -1,12 +1,15 @@
 package search
 
 import (
-	"bufio"
+	"cmp"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/kohbis/xr/internal/config"
@@ -38,7 +41,7 @@ func Search(cfg *config.Config, wsDir string, opts Options) ([]Match, error) {
 	var matches []Match
 
 	for _, repo := range cfg.Repositories {
-		if len(opts.RepoFilter) > 0 && !contains(opts.RepoFilter, repo.Name) {
+		if len(opts.RepoFilter) > 0 && !slices.Contains(opts.RepoFilter, repo.Name) {
 			continue
 		}
 
@@ -60,210 +63,225 @@ func Search(cfg *config.Config, wsDir string, opts Options) ([]Match, error) {
 	return matches, nil
 }
 
+// searchRepo searches one repository with whichever engine is available. Both
+// engines are given the same file list, so the results do not depend on
+// ripgrep being installed.
 func searchRepo(repoName, repoPath string, opts Options) ([]Match, error) {
-	if isRipgrepAvailable() {
-		return searchWithRipgrep(repoName, repoPath, opts)
+	files, err := listFiles(repoPath, opts.Glob)
+	if err != nil {
+		return nil, err
 	}
-	return searchBuiltin(repoName, repoPath, opts)
+	if len(files) == 0 {
+		return nil, nil
+	}
+	var matches []Match
+	if isRipgrepAvailable() {
+		matches, err = searchWithRipgrep(repoName, repoPath, files, opts)
+	} else {
+		matches, err = searchBuiltin(repoName, repoPath, files, opts)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// ripgrep searches the batch in parallel and reports files in whatever
+	// order the workers finish, so order the results here. Both engines then
+	// produce the same sequence, and repeated runs produce it identically.
+	slices.SortStableFunc(matches, func(a, b Match) int {
+		if a.File != b.File {
+			return cmp.Compare(a.File, b.File)
+		}
+		return cmp.Compare(a.Line, b.Line)
+	})
+	return matches, nil
 }
 
-func isRipgrepAvailable() bool {
+// isRipgrepAvailable reports whether the ripgrep binary can be used. It is a
+// variable so tests can exercise both engines on the same fixture.
+var isRipgrepAvailable = func() bool {
 	_, err := exec.LookPath("rg")
 	return err == nil
 }
 
-func searchWithRipgrep(repoName, repoPath string, opts Options) ([]Match, error) {
-	args := []string{"--line-number", "--no-heading", "--color=never"}
+// Field separators handed to ripgrep in place of ":" and "-". Both are
+// characters that cannot occur in a path or in a line of text, so the output
+// parses unambiguously no matter what the file names or matches contain.
+const (
+	ripgrepMatchSep   = "\x1f"
+	ripgrepContextSep = "\x1e"
+)
 
+// ripgrepArgvBudget caps the bytes of file paths passed to one ripgrep call,
+// well below the system limit on argument size, so a repository with many
+// files is searched in several batches rather than failing to start.
+const ripgrepArgvBudget = 64 << 10
+
+func searchWithRipgrep(repoName, repoPath string, files []string, opts Options) ([]Match, error) {
+	base := []string{
+		"--line-number",
+		"--with-filename",
+		"--no-heading",
+		"--color=never",
+		"--field-match-separator=" + ripgrepMatchSep,
+		"--field-context-separator=" + ripgrepContextSep,
+	}
 	if opts.IgnoreCase {
-		args = append(args, "--ignore-case")
+		base = append(base, "--ignore-case")
 	}
 	if opts.Context > 0 {
-		args = append(args, fmt.Sprintf("--context=%d", opts.Context))
-	}
-	if opts.Glob != "" {
-		args = append(args, "--glob", opts.Glob)
+		base = append(base, fmt.Sprintf("--context=%d", opts.Context))
 	}
 	if !opts.UseRegex {
-		args = append(args, "--fixed-strings")
+		base = append(base, "--fixed-strings")
 	}
+	// -e keeps a pattern that starts with a dash from being read as a flag.
+	base = append(base, "-e", opts.Pattern, "--")
 
-	args = append(args, opts.Pattern, repoPath)
-
-	cmd := exec.Command("rg", args...)
-	out, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-			return nil, nil // no matches
-		}
-		return nil, fmt.Errorf("ripgrep: %w", err)
-	}
-
-	return parseRipgrepOutput(repoName, repoPath, string(out), opts.Context > 0)
-}
-
-func parseRipgrepOutput(repoName, repoPath, output string, hasContext bool) ([]Match, error) {
 	var matches []Match
-
-	for _, line := range strings.Split(output, "\n") {
-		if line == "" || line == "--" {
-			continue
-		}
-
-		isContext := false
-		sep := ":"
-		if hasContext && strings.Contains(line, "-") {
-			parts := strings.SplitN(line, "-", 3)
-			if len(parts) == 3 {
-				if isFilePath(parts[0]) {
-					isContext = true
-					sep = "-"
-				}
+	for _, batch := range batchFiles(files, ripgrepArgvBudget) {
+		cmd := exec.Command("rg", append(slices.Clone(base), batch...)...)
+		// Paths are relative, so ripgrep reports them relative too.
+		cmd.Dir = repoPath
+		out, err := cmd.Output()
+		if err != nil {
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+				continue // no matches in this batch
 			}
+			return nil, fmt.Errorf("ripgrep: %w", err)
 		}
-
-		parts := strings.SplitN(line, sep, 3)
-		if len(parts) < 3 {
-			continue
-		}
-
-		filePath := strings.TrimPrefix(parts[0], repoPath+"/")
-		lineNum := 0
-		if _, err := fmt.Sscanf(parts[1], "%d", &lineNum); err != nil {
-			continue
-		}
-		content := parts[2]
-
-		matches = append(matches, Match{
-			Repo:      repoName,
-			File:      filePath,
-			Line:      lineNum,
-			Content:   content,
-			IsContext: isContext,
-		})
+		matches = append(matches, parseRipgrepOutput(repoName, string(out))...)
 	}
-
 	return matches, nil
 }
 
-func isFilePath(s string) bool {
-	return strings.Contains(s, "/") || strings.Contains(s, ".")
+// batchFiles splits paths into groups whose combined length stays within
+// budget, so each ripgrep invocation has a bounded argument list.
+func batchFiles(files []string, budget int) [][]string {
+	var batches [][]string
+	var current []string
+	size := 0
+	for _, f := range files {
+		// A single path longer than the budget still has to go somewhere.
+		if len(current) > 0 && size+len(f)+1 > budget {
+			batches = append(batches, current)
+			current, size = nil, 0
+		}
+		current = append(current, f)
+		size += len(f) + 1
+	}
+	if len(current) > 0 {
+		batches = append(batches, current)
+	}
+	return batches
 }
 
-func searchBuiltin(repoName, repoPath string, opts Options) ([]Match, error) {
-	var pattern *regexp.Regexp
-	var err error
+// parseRipgrepOutput turns ripgrep's output into matches. Each line is
+// "path SEP line SEP content", with the separator saying whether it is a match
+// or a context line. Anything else — the "--" between context groups, or the
+// note ripgrep prints for a binary file — does not have that shape and is
+// dropped.
+func parseRipgrepOutput(repoName, out string) []Match {
+	var matches []Match
+	for _, line := range strings.Split(out, "\n") {
+		if line == "" {
+			continue
+		}
+		m, ok := parseRipgrepLine(repoName, line)
+		if !ok {
+			continue
+		}
+		matches = append(matches, m)
+	}
+	return matches
+}
 
+func parseRipgrepLine(repoName, line string) (Match, bool) {
+	sep, isContext := ripgrepMatchSep, false
+	if !strings.Contains(line, ripgrepMatchSep) {
+		sep, isContext = ripgrepContextSep, true
+	}
+
+	parts := strings.SplitN(line, sep, 3)
+	if len(parts) < 3 {
+		return Match{}, false
+	}
+	lineNum, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return Match{}, false
+	}
+	return Match{
+		Repo:      repoName,
+		File:      parts[0],
+		Line:      lineNum,
+		Content:   parts[2],
+		IsContext: isContext,
+	}, true
+}
+
+func searchBuiltin(repoName, repoPath string, files []string, opts Options) ([]Match, error) {
 	patternStr := opts.Pattern
 	if !opts.UseRegex {
 		patternStr = regexp.QuoteMeta(patternStr)
 	}
-
 	flags := ""
 	if opts.IgnoreCase {
 		flags = "(?i)"
 	}
-
-	pattern, err = regexp.Compile(flags + patternStr)
+	pattern, err := regexp.Compile(flags + patternStr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid pattern: %w", err)
 	}
 
 	var matches []Match
-
-	err = filepath.Walk(repoPath, func(path string, info os.FileInfo, err error) error {
+	for _, rel := range files {
+		fileMatches, err := searchFile(repoName, rel, filepath.Join(repoPath, filepath.FromSlash(rel)), pattern, opts.Context)
 		if err != nil {
-			return nil
-		}
-
-		if info.IsDir() {
-			if strings.HasPrefix(info.Name(), ".") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		if opts.Glob != "" {
-			matched, globErr := filepath.Match(opts.Glob, info.Name())
-			if globErr != nil || !matched {
-				return nil
-			}
-		}
-
-		fileMatches, err := searchFile(repoName, repoPath, path, pattern, opts.Context)
-		if err != nil {
-			return nil
+			continue
 		}
 		matches = append(matches, fileMatches...)
-		return nil
-	})
-
-	return matches, err
-}
-
-func searchFile(repoName, repoPath, filePath string, pattern *regexp.Regexp, contextLines int) ([]Match, error) {
-	f, err := os.Open(filePath)
-	if err != nil {
-		return nil, err
 	}
-	defer func() { _ = f.Close() }()
-
-	var lines []string
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	relPath := strings.TrimPrefix(filePath, repoPath+"/")
-	var matches []Match
-	emittedLines := make(map[int]bool)
-
-	for i, line := range lines {
-		if pattern.MatchString(line) {
-			start := max(0, i-contextLines)
-			end := min(len(lines)-1, i+contextLines)
-
-			for j := start; j <= end; j++ {
-				if !emittedLines[j] {
-					matches = append(matches, Match{
-						Repo:      repoName,
-						File:      relPath,
-						Line:      j + 1,
-						Content:   lines[j],
-						IsContext: j != i,
-					})
-					emittedLines[j] = true
-				}
-			}
-		}
-	}
-
 	return matches, nil
 }
 
-func contains(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
+// searchFile returns the matches in one file, along with the requested
+// context lines. Binary files are skipped, matching what ripgrep reports for
+// them.
+func searchFile(repoName, rel, filePath string, pattern *regexp.Regexp, contextLines int) ([]Match, error) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	if isBinary(content) {
+		return nil, nil
+	}
+
+	lines := strings.Split(strings.TrimSuffix(string(content), "\n"), "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		return nil, nil
+	}
+
+	var matches []Match
+	emittedLines := make(map[int]bool)
+	for i, line := range lines {
+		if !pattern.MatchString(line) {
+			continue
+		}
+		start := max(0, i-contextLines)
+		end := min(len(lines)-1, i+contextLines)
+		for j := start; j <= end; j++ {
+			if emittedLines[j] {
+				continue
+			}
+			matches = append(matches, Match{
+				Repo:      repoName,
+				File:      rel,
+				Line:      j + 1,
+				Content:   lines[j],
+				IsContext: j != i,
+			})
+			emittedLines[j] = true
 		}
 	}
-	return false
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
+	return matches, nil
 }

@@ -21,7 +21,7 @@ xr/
 │   ├── git/                 # Shared git command/query helpers
 │   ├── workspace/           # Workspace initialization and git operations
 │   ├── worktree/            # Worktree creation/listing/removal across repos
-│   ├── search/              # Cross-repo search (ripgrep + fallback)
+│   ├── search/              # Cross-repo search (ripgrep + fallback, one file set)
 │   ├── runner/              # Cross-repo command execution (xr exec)
 │   ├── parallel/            # Ordered concurrent execution shared by --jobs
 │   ├── structure/           # Directory tree analysis and display
@@ -187,6 +187,8 @@ Prefer a consistent automation story across commands:
 
 **Current behavior:** `--json` is implemented on `xr repo list`, `xr repo sync`, `xr search`, `xr exec`, `xr worktree list` / `add` / `remove` / `prune`, and `xr diff file` / `pattern` / `history`. `--report` is implemented on `xr repo sync` and those `xr diff` subcommands. `xr repo sync --json` sets `SyncOptions.Quiet` and reads per-repository outcomes from `SyncResult.Repos`, which `output.SyncPrinter` records as it prints; it also disables prompts.
 
+`internal/search` must return the same matches whichever engine runs. `listFiles` (built on `git.ListFiles`) is the single file set both engines search, the glob and the binary check are applied in Go rather than delegated to ripgrep, and results are sorted per repository because ripgrep answers a batch out of order. ripgrep is invoked with explicit paths, batched to stay inside the argument-size limit, and with `--field-match-separator` / `--field-context-separator` so its output parses unambiguously. When changing either engine, extend `TestSearchRepo_EnginesAgree` rather than only the engine you touched.
+
 Warnings from `internal/` scans must not be printed from inside the package: `internal/search` reports per-repository errors through `Options.OnRepoError` and `internal/diff.SearchPattern` returns them in `PatternResult.Error`, so the `cmd/` layer can keep `--json` output clean. `internal/diff` scans only the files git knows about (`git.ListFiles`: tracked plus untracked, not ignored) and returns results in configuration order.
 
 ### Commit messages
@@ -236,7 +238,7 @@ Changelog excludes commits with types `docs`, `test`, and `chore`.
 `xr` shells out to external tools at runtime:
 - `git` — required for `xr init`, `xr repo sync`, `xr repo import`, `xr worktree`, `xr diff`, `xr diff history`
 - `diff` — required for `xr diff file` (pre-installed on most systems)
-- `rg` (ripgrep) — optional for `xr search`; falls back to built-in implementation if absent
+- `rg` (ripgrep) — optional for `xr search`; falls back to a built-in implementation if absent
 
 ### Concurrency (`--jobs`)
 

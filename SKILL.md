@@ -138,12 +138,21 @@ plus its captured stdout and stderr.
 xr search <pattern>
 xr search -e "func\s+\w+"         # regex
 xr search -i "error"               # case-insensitive
-xr search -g "*.go" "TODO"         # filter by file glob
+xr search -g "*.go" "TODO"         # filter by file glob (any depth)
+xr search -g "cmd/*.go" "TODO"     # glob with a separator matches the path
 xr search -C 3 "panic"             # 3 lines of context
 xr search -r project-a "main"      # limit to one repo
 xr search -r a -r b "pattern"      # limit to multiple repos
 xr search --json "pattern"         # machine-readable match output
 ```
+
+Searches the files git knows about in each repository — tracked files plus
+untracked files that are not ignored — so build output and dependency trees stay
+out of the results while tracked dot directories such as `.github` are included.
+Binary files are skipped. A glob without a separator matches the file name at any
+depth (`*.go`), one containing a separator matches the relative path
+(`cmd/*.go`). Results and their order are the same whether or not ripgrep is
+installed.
 
 **Agent use cases:**
 - Find all usages of a symbol, pattern, or interface across repos

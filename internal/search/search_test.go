@@ -1,60 +1,105 @@
 package search
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/kohbis/xr/internal/config"
 )
 
 func TestParseRipgrepOutput_StandardOutput(t *testing.T) {
-	output := "/workspace/repos/proj/main.go:10:func main() {\n/workspace/repos/proj/main.go:15:}\n"
+	output := "main.go\x1f10\x1ffunc main() {\n" +
+		"lib/util.go\x1f25\x1freturn nil\n"
 
-	matches, err := parseRipgrepOutput("proj", "/workspace/repos/proj", output, false)
-	if err != nil {
-		t.Fatalf("parseRipgrepOutput() error = %v", err)
-	}
-
+	matches := parseRipgrepOutput("proj", output)
 	if len(matches) != 2 {
 		t.Fatalf("got %d matches, want 2", len(matches))
 	}
+	if matches[0].File != "main.go" || matches[0].Line != 10 || matches[0].Content != "func main() {" {
+		t.Errorf("first match = %+v", matches[0])
+	}
+	if matches[0].IsContext {
+		t.Error("match line should not be marked as context")
+	}
+	if matches[1].File != "lib/util.go" || matches[1].Line != 25 {
+		t.Errorf("second match = %+v", matches[1])
+	}
+}
 
-	if matches[0].File != "main.go" {
-		t.Errorf("matches[0].File = %q, want %q", matches[0].File, "main.go")
+func TestParseRipgrepOutput_ContextLines(t *testing.T) {
+	output := "main.go\x1e9\x1eimport \"fmt\"\n" +
+		"main.go\x1f10\x1ffunc main() {\n"
+
+	matches := parseRipgrepOutput("proj", output)
+	if len(matches) != 2 {
+		t.Fatalf("got %d matches, want 2", len(matches))
 	}
-	if matches[0].Line != 10 {
-		t.Errorf("matches[0].Line = %d, want 10", matches[0].Line)
+	if !matches[0].IsContext {
+		t.Error("line separated by the context separator should be marked as context")
 	}
-	if matches[0].Content != "func main() {" {
-		t.Errorf("matches[0].Content = %q, want %q", matches[0].Content, "func main() {")
-	}
-	if matches[0].Repo != "proj" {
-		t.Errorf("matches[0].Repo = %q, want %q", matches[0].Repo, "proj")
+	if matches[1].IsContext {
+		t.Error("line separated by the match separator should not be context")
 	}
 }
 
 func TestParseRipgrepOutput_EmptyOutput(t *testing.T) {
-	matches, err := parseRipgrepOutput("proj", "/workspace/repos/proj", "", false)
-	if err != nil {
-		t.Fatalf("parseRipgrepOutput() error = %v", err)
-	}
-	if len(matches) != 0 {
-		t.Errorf("got %d matches, want 0", len(matches))
+	if matches := parseRipgrepOutput("proj", ""); len(matches) != 0 {
+		t.Errorf("got %d matches for empty output, want 0", len(matches))
 	}
 }
 
-func TestParseRipgrepOutput_SkipsSeparatorLines(t *testing.T) {
-	output := "/workspace/repos/proj/a.go:1:line1\n--\n/workspace/repos/proj/b.go:2:line2\n"
+func TestParseRipgrepOutput_SkipsNonResultLines(t *testing.T) {
+	// The "--" between context groups and the note ripgrep prints for a binary
+	// file carry no line number, so neither becomes a match.
+	output := "--\n" +
+		"bin.dat: binary file matches (found \"\\0\" byte around offset 5)\n" +
+		"main.go\x1f1\x1fhit\n"
 
-	matches, err := parseRipgrepOutput("proj", "/workspace/repos/proj", output, false)
-	if err != nil {
-		t.Fatalf("parseRipgrepOutput() error = %v", err)
+	matches := parseRipgrepOutput("proj", output)
+	if len(matches) != 1 || matches[0].File != "main.go" {
+		t.Errorf("matches = %+v, want only main.go", matches)
+	}
+}
+
+func TestParseRipgrepOutput_PathWithSeparatorCharacters(t *testing.T) {
+	// A path containing ":" and "-" used to confuse the old heuristic parser.
+	output := "weird:name-1.go\x1f7\x1fhit\n"
+
+	matches := parseRipgrepOutput("proj", output)
+	if len(matches) != 1 {
+		t.Fatalf("got %d matches, want 1", len(matches))
+	}
+	if matches[0].File != "weird:name-1.go" || matches[0].Line != 7 || matches[0].Content != "hit" {
+		t.Errorf("match = %+v", matches[0])
+	}
+}
+
+func TestBatchFiles(t *testing.T) {
+	files := []string{"aaaa", "bbbb", "cccc"}
+	// Budget for two paths of five bytes each.
+	batches := batchFiles(files, 10)
+	if len(batches) != 2 {
+		t.Fatalf("got %d batches, want 2: %v", len(batches), batches)
+	}
+	if len(batches[0]) != 2 || len(batches[1]) != 1 {
+		t.Errorf("batches = %v", batches)
 	}
 
-	if len(matches) != 2 {
-		t.Fatalf("got %d matches, want 2", len(matches))
+	var flat []string
+	for _, b := range batchFiles(files, 1) {
+		flat = append(flat, b...)
+	}
+	if strings.Join(flat, ",") != "aaaa,bbbb,cccc" {
+		t.Errorf("a tiny budget must still cover every file, got %v", flat)
+	}
+	if len(batchFiles(nil, 10)) != 0 {
+		t.Error("no files should produce no batches")
 	}
 }
 
@@ -66,7 +111,7 @@ func TestSearchFile_BasicMatch(t *testing.T) {
 	}
 
 	pattern := regexp.MustCompile("hello")
-	matches, err := searchFile("repo", dir, filePath, pattern, 0)
+	matches, err := searchFile("repo", "test.txt", filePath, pattern, 0)
 	if err != nil {
 		t.Fatalf("searchFile() error = %v", err)
 	}
@@ -91,7 +136,7 @@ func TestSearchFile_WithContext(t *testing.T) {
 	}
 
 	pattern := regexp.MustCompile("target")
-	matches, err := searchFile("repo", dir, filePath, pattern, 1)
+	matches, err := searchFile("repo", "test.txt", filePath, pattern, 1)
 	if err != nil {
 		t.Fatalf("searchFile() error = %v", err)
 	}
@@ -119,7 +164,7 @@ func TestSearchFile_NoMatch(t *testing.T) {
 	}
 
 	pattern := regexp.MustCompile("missing")
-	matches, err := searchFile("repo", dir, filePath, pattern, 0)
+	matches, err := searchFile("repo", "test.txt", filePath, pattern, 0)
 	if err != nil {
 		t.Fatalf("searchFile() error = %v", err)
 	}
@@ -138,7 +183,7 @@ func TestSearchFile_ContextDoesNotDuplicate(t *testing.T) {
 	}
 
 	pattern := regexp.MustCompile("match")
-	matches, err := searchFile("repo", dir, filePath, pattern, 1)
+	matches, err := searchFile("repo", "test.txt", filePath, pattern, 1)
 	if err != nil {
 		t.Fatalf("searchFile() error = %v", err)
 	}
@@ -162,7 +207,7 @@ func TestSearchBuiltin_GlobFilter(t *testing.T) {
 		Pattern: "package",
 		Glob:    "*.go",
 	}
-	matches, err := searchBuiltin("repo", dir, opts)
+	matches, err := searchBuiltinAll(t, "repo", dir, opts)
 	if err != nil {
 		t.Fatalf("searchBuiltin() error = %v", err)
 	}
@@ -182,7 +227,7 @@ func TestSearchBuiltin_IgnoreCase(t *testing.T) {
 	}
 
 	opts := Options{Pattern: "hello", IgnoreCase: true}
-	matches, err := searchBuiltin("repo", dir, opts)
+	matches, err := searchBuiltinAll(t, "repo", dir, opts)
 	if err != nil {
 		t.Fatalf("searchBuiltin() error = %v", err)
 	}
@@ -191,13 +236,22 @@ func TestSearchBuiltin_IgnoreCase(t *testing.T) {
 	}
 }
 
-func TestSearchBuiltin_SkipsDotDirs(t *testing.T) {
+func TestSearchBuiltin_SkipsGitDirButCoversDotFiles(t *testing.T) {
 	dir := t.TempDir()
-	hidden := filepath.Join(dir, ".hidden")
-	if err := os.MkdirAll(hidden, 0755); err != nil {
+	// A dot directory a project actually tracks, such as .github, is part of
+	// the repository and is searched; only .git itself is off limits.
+	tracked := filepath.Join(dir, ".github")
+	if err := os.MkdirAll(tracked, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(hidden, "secret.txt"), []byte("match\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tracked, "ci.yml"), []byte("match\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	gitDir := filepath.Join(dir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gitDir, "description"), []byte("match\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "visible.txt"), []byte("match\n"), 0644); err != nil {
@@ -205,12 +259,17 @@ func TestSearchBuiltin_SkipsDotDirs(t *testing.T) {
 	}
 
 	opts := Options{Pattern: "match"}
-	matches, err := searchBuiltin("repo", dir, opts)
+	matches, err := searchBuiltinAll(t, "repo", dir, opts)
 	if err != nil {
 		t.Fatalf("searchBuiltin() error = %v", err)
 	}
-	if len(matches) != 1 {
-		t.Errorf("got %d matches, want 1 (hidden dir should be skipped)", len(matches))
+	var files []string
+	for _, m := range matches {
+		files = append(files, m.File)
+	}
+	sort.Strings(files)
+	if strings.Join(files, ",") != ".github/ci.yml,visible.txt" {
+		t.Errorf("files = %v, want .github/ci.yml and visible.txt (.git excluded)", files)
 	}
 }
 
@@ -221,7 +280,7 @@ func TestSearchBuiltin_Regex(t *testing.T) {
 	}
 
 	opts := Options{Pattern: `func\s+\w+`, UseRegex: true}
-	matches, err := searchBuiltin("repo", dir, opts)
+	matches, err := searchBuiltinAll(t, "repo", dir, opts)
 	if err != nil {
 		t.Fatalf("searchBuiltin() error = %v", err)
 	}
@@ -290,7 +349,7 @@ func TestSearch_BuiltinMultiRepo(t *testing.T) {
 		},
 	}
 
-	matches, err := searchBuiltin("app", filepath.Join(reposDir, "app"), Options{Pattern: "fmt"})
+	matches, err := searchBuiltinAll(t, "app", filepath.Join(reposDir, "app"), Options{Pattern: "fmt"})
 	if err != nil {
 		t.Fatalf("searchBuiltin() error = %v", err)
 	}
@@ -344,7 +403,7 @@ func TestSearchBuiltin_FixedString(t *testing.T) {
 	}
 
 	opts := Options{Pattern: "func main()", UseRegex: false}
-	matches, err := searchBuiltin("repo", dir, opts)
+	matches, err := searchBuiltinAll(t, "repo", dir, opts)
 	if err != nil {
 		t.Fatalf("searchBuiltin() error = %v", err)
 	}
@@ -360,7 +419,7 @@ func TestSearchBuiltin_FixedStringDoesNotInterpretRegex(t *testing.T) {
 	}
 
 	opts := Options{Pattern: "$10.00", UseRegex: false}
-	matches, err := searchBuiltin("repo", dir, opts)
+	matches, err := searchBuiltinAll(t, "repo", dir, opts)
 	if err != nil {
 		t.Fatalf("searchBuiltin() error = %v", err)
 	}
@@ -369,47 +428,160 @@ func TestSearchBuiltin_FixedStringDoesNotInterpretRegex(t *testing.T) {
 	}
 }
 
-func TestContains(t *testing.T) {
-	if !contains([]string{"a", "b", "c"}, "b") {
-		t.Error("contains(a,b,c, b) = false, want true")
+// searchBuiltinAll runs the builtin engine over the whole repository, the way
+// searchRepo does, so tests do not have to enumerate files themselves.
+func searchBuiltinAll(t *testing.T, repoName, repoPath string, opts Options) ([]Match, error) {
+	t.Helper()
+	files, err := listFiles(repoPath, opts.Glob)
+	if err != nil {
+		return nil, err
 	}
-	if contains([]string{"a", "b"}, "z") {
-		t.Error("contains(a,b, z) = true, want false")
-	}
-	if contains(nil, "a") {
-		t.Error("contains(nil, a) = true, want false")
-	}
+	return searchBuiltin(repoName, repoPath, files, opts)
 }
 
-func TestIsFilePath(t *testing.T) {
-	tests := []struct {
-		input string
-		want  bool
-	}{
-		{"/path/to/file", true},
-		{"file.go", true},
-		{"nopath", false},
-		{"src/main", true},
+// buildParityFixture creates a git repository holding one file of every kind
+// the two engines used to disagree about.
+func buildParityFixture(t *testing.T) string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not in PATH")
 	}
+	dir := t.TempDir()
 
-	for _, tt := range tests {
-		if got := isFilePath(tt.input); got != tt.want {
-			t.Errorf("isFilePath(%q) = %v, want %v", tt.input, got, tt.want)
+	write := func(rel, content string) {
+		t.Helper()
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0644); err != nil {
+			t.Fatal(err)
 		}
 	}
+
+	write(".gitignore", "build/\n")
+	write("top.go", "needle here\n")
+	write("sub/nested.go", "needle here\n")
+	write("notes.txt", "needle here\n")
+	write(".github/ci.yml", "needle here\n")     // tracked dotfile: searched
+	write("build/generated.go", "needle here\n") // ignored: never searched
+	write("bin.dat", "needle\x00here\n")         // binary: never searched
+
+	cmd := exec.Command("git", "init")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("git init unavailable: %v\n%s", err, out)
+	}
+	for _, args := range [][]string{{"add", "-A"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "init", "--no-gpg-sign"}} {
+		c := exec.Command("git", args...)
+		c.Dir = dir
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	return dir
 }
 
-func TestMinMax(t *testing.T) {
-	if got := max(3, 5); got != 5 {
-		t.Errorf("max(3,5) = %d, want 5", got)
+func searchWithEngine(t *testing.T, useRipgrep bool, repoPath string, opts Options) []Match {
+	t.Helper()
+	original := isRipgrepAvailable
+	isRipgrepAvailable = func() bool { return useRipgrep }
+	t.Cleanup(func() { isRipgrepAvailable = original })
+
+	if useRipgrep {
+		if _, err := exec.LookPath("rg"); err != nil {
+			t.Skip("ripgrep not installed")
+		}
 	}
-	if got := max(7, 2); got != 7 {
-		t.Errorf("max(7,2) = %d, want 7", got)
+	matches, err := searchRepo("repo", repoPath, opts)
+	if err != nil {
+		t.Fatalf("searchRepo() error = %v", err)
 	}
-	if got := min(3, 5); got != 3 {
-		t.Errorf("min(3,5) = %d, want 3", got)
+	// Deliberately not sorted here: searchRepo must return a deterministic
+	// order by itself, whichever engine ran.
+	return matches
+}
+
+func summarize(matches []Match) string {
+	var lines []string
+	for _, m := range matches {
+		lines = append(lines, fmt.Sprintf("%s:%d:%t:%s", m.File, m.Line, m.IsContext, m.Content))
 	}
-	if got := min(7, 2); got != 2 {
-		t.Errorf("min(7,2) = %d, want 2", got)
+	return strings.Join(lines, "\n")
+}
+
+// TestSearchRepo_EnginesAgree is the point of sharing one file list: the
+// results must not depend on whether ripgrep is installed.
+func TestSearchRepo_EnginesAgree(t *testing.T) {
+	dir := buildParityFixture(t)
+
+	cases := []struct {
+		name string
+		opts Options
+		want string
+	}{
+		{
+			name: "whole repository",
+			opts: Options{Pattern: "needle"},
+			want: ".github/ci.yml:1:false:needle here\n" +
+				"notes.txt:1:false:needle here\n" +
+				"sub/nested.go:1:false:needle here\n" +
+				"top.go:1:false:needle here",
+		},
+		{
+			name: "glob without a separator matches at any depth",
+			opts: Options{Pattern: "needle", Glob: "*.go"},
+			want: "sub/nested.go:1:false:needle here\n" +
+				"top.go:1:false:needle here",
+		},
+		{
+			name: "glob with a separator matches the path",
+			opts: Options{Pattern: "needle", Glob: "sub/*.go"},
+			want: "sub/nested.go:1:false:needle here",
+		},
+		{
+			name: "repeated ripgrep runs keep the order",
+			opts: Options{Pattern: "needle", Glob: "*.go"},
+			want: "sub/nested.go:1:false:needle here\n" +
+				"top.go:1:false:needle here",
+		},
+		{
+			name: "regex",
+			opts: Options{Pattern: `need\w+`, UseRegex: true, Glob: "top.go"},
+			want: "top.go:1:false:needle here",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			builtin := summarize(searchWithEngine(t, false, dir, tc.opts))
+			ripgrep := summarize(searchWithEngine(t, true, dir, tc.opts))
+
+			if builtin != tc.want {
+				t.Errorf("builtin engine =\n%s\nwant:\n%s", builtin, tc.want)
+			}
+			if ripgrep != builtin {
+				t.Errorf("engines disagree:\nripgrep:\n%s\nbuiltin:\n%s", ripgrep, builtin)
+			}
+		})
+	}
+}
+
+func TestSearchRepo_BatchesLargeFileLists(t *testing.T) {
+	dir := buildParityFixture(t)
+	// Force many ripgrep invocations to prove batching does not lose or
+	// duplicate results.
+	files, err := listFiles(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(batchFiles(files, 8)) < 2 {
+		t.Fatalf("fixture should split into several batches, got %d", len(batchFiles(files, 8)))
+	}
+
+	want := summarize(searchWithEngine(t, false, dir, Options{Pattern: "needle"}))
+	got := summarize(searchWithEngine(t, true, dir, Options{Pattern: "needle"}))
+	if got != want {
+		t.Errorf("batched ripgrep run =\n%s\nwant:\n%s", got, want)
 	}
 }

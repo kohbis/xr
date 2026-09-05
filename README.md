@@ -40,7 +40,7 @@ Subcommands and flags are completed automatically. Repository names are complete
 |---------|----------|---------|---------|
 | `git` | **Yes** | `xr init`, `xr repo sync`, `xr repo import`, `xr diff`, `xr diff history` | Clones, branch switching, `git log` / `git diff` in each repo |
 | `diff` | Yes (pre-installed) | `xr diff file` | Unified diff output between files across repositories |
-| `rg` (ripgrep) | No | `xr search` | Fast search engine; falls back to a built-in implementation if not found |
+| `rg` (ripgrep) | No | `xr search` | Faster search engine; falls back to a built-in implementation if not found. Both search the same files and return the same results, so installing it changes speed only |
 
 Install missing tools as needed:
 
