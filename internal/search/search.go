@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/kohbis/xr/internal/config"
+	"github.com/kohbis/xr/internal/parallel"
 )
 
 type Options struct {
@@ -23,9 +24,14 @@ type Options struct {
 	IgnoreCase bool
 	UseRegex   bool
 
+	// Jobs is the number of repositories searched concurrently. Values below 2
+	// search them one at a time.
+	Jobs int
+
 	// OnRepoError is called when one repository could not be searched. The
 	// search continues with the remaining repositories. When nil, such errors
-	// are dropped.
+	// are dropped. It is called from the caller's goroutine in configuration
+	// order, whatever order the repositories were searched in.
 	OnRepoError func(repo string, err error)
 }
 
@@ -38,8 +44,12 @@ type Match struct {
 }
 
 func Search(cfg *config.Config, wsDir string, opts Options) ([]Match, error) {
-	var matches []Match
+	type target struct {
+		name string
+		path string
+	}
 
+	var targets []target
 	for _, repo := range cfg.Repositories {
 		if len(opts.RepoFilter) > 0 && !slices.Contains(opts.RepoFilter, repo.Name) {
 			continue
@@ -49,19 +59,38 @@ func Search(cfg *config.Config, wsDir string, opts Options) ([]Match, error) {
 		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
 			continue
 		}
+		targets = append(targets, target{name: repo.Name, path: repoPath})
+	}
 
-		repoMatches, err := searchRepo(repo.Name, repoPath, opts)
-		if err != nil {
+	type result struct {
+		matches []Match
+		err     error
+	}
+	results := parallel.Results(len(targets), opts.Jobs, func(i int) result {
+		repoMatches, err := searchRepoFunc(targets[i].name, targets[i].path, opts)
+		return result{matches: repoMatches, err: err}
+	})
+
+	// Reported in configuration order, so the matches and the error callbacks
+	// come out the same whether or not the repositories were searched at once.
+	var matches []Match
+	for i, r := range results {
+		if r.err != nil {
 			if opts.OnRepoError != nil {
-				opts.OnRepoError(repo.Name, err)
+				opts.OnRepoError(targets[i].name, r.err)
 			}
 			continue
 		}
-		matches = append(matches, repoMatches...)
+		matches = append(matches, r.matches...)
 	}
 
 	return matches, nil
 }
+
+// searchRepoFunc is the per-repository search Search runs. It is a variable so
+// tests can drive the failure path, the way isRipgrepAvailable lets them drive
+// the engine choice.
+var searchRepoFunc = searchRepo
 
 // searchRepo searches one repository with whichever engine is available. Both
 // engines are given the same file list, so the results do not depend on

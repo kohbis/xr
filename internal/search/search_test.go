@@ -6,9 +6,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kohbis/xr/internal/config"
 )
@@ -583,5 +585,126 @@ func TestSearchRepo_BatchesLargeFileLists(t *testing.T) {
 	got := summarize(searchWithEngine(t, true, dir, Options{Pattern: "needle"}))
 	if got != want {
 		t.Errorf("batched ripgrep run =\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// TestSearch_JobsDoesNotChangeResults is the point of running repositories
+// concurrently: --jobs is a speed knob, so the matches must come out in
+// repos.yaml order whatever order the workers finish in.
+func TestSearch_JobsDoesNotChangeResults(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not in PATH")
+	}
+	wsDir := t.TempDir()
+
+	var repos []config.Repository
+	for _, name := range []string{"alpha", "bravo", "charlie", "delta"} {
+		initRepoWithNeedle(t, filepath.Join(wsDir, name))
+		repos = append(repos, config.Repository{Name: name, Path: name})
+	}
+	// Absent from the workspace: skipped, not searched and not failed.
+	repos = append(repos, config.Repository{Name: "missing", Path: "missing"})
+	cfg := &config.Config{Repositories: repos}
+
+	want := searchSummary(t, cfg, wsDir, 1)
+	if want == "" {
+		t.Fatal("fixture produced no matches")
+	}
+	for _, jobs := range []int{2, 4, 16} {
+		if got := searchSummary(t, cfg, wsDir, jobs); got != want {
+			t.Errorf("jobs=%d matches =\n%s\nwant:\n%s", jobs, got, want)
+		}
+	}
+}
+
+// TestSearch_JobsKeepsErrorOrder covers the other half of that guarantee: a
+// repository that cannot be searched is reported in configuration order too, so
+// warnings and JSON failures do not depend on which worker finished first.
+func TestSearch_JobsKeepsErrorOrder(t *testing.T) {
+	names := []string{"alpha", "bravo", "charlie", "delta", "echo"}
+	failing := map[string]bool{"bravo": true, "delta": true}
+
+	original := searchRepoFunc
+	t.Cleanup(func() { searchRepoFunc = original })
+	searchRepoFunc = func(repoName, _ string, _ Options) ([]Match, error) {
+		// Later repositories finish first, so completion order is reversed.
+		time.Sleep(time.Duration(len(names)-slices.Index(names, repoName)) * 2 * time.Millisecond)
+		if failing[repoName] {
+			return nil, fmt.Errorf("cannot search %s", repoName)
+		}
+		return []Match{{Repo: repoName, File: "a.go", Line: 1, Content: "needle"}}, nil
+	}
+
+	wsDir := t.TempDir()
+	var repos []config.Repository
+	for _, name := range names {
+		if err := os.MkdirAll(filepath.Join(wsDir, name), 0755); err != nil {
+			t.Fatal(err)
+		}
+		repos = append(repos, config.Repository{Name: name, Path: name})
+	}
+	cfg := &config.Config{Repositories: repos}
+
+	for _, jobs := range []int{1, 2, 5} {
+		var failed []string
+		matches, err := Search(cfg, wsDir, Options{
+			Pattern:     "needle",
+			Jobs:        jobs,
+			OnRepoError: func(repo string, _ error) { failed = append(failed, repo) },
+		})
+		if err != nil {
+			t.Fatalf("Search(jobs=%d) error = %v", jobs, err)
+		}
+
+		var searched []string
+		for _, m := range matches {
+			searched = append(searched, m.Repo)
+		}
+		if want := []string{"alpha", "charlie", "echo"}; !slices.Equal(searched, want) {
+			t.Errorf("jobs=%d matched repos = %v, want %v", jobs, searched, want)
+		}
+		if want := []string{"bravo", "delta"}; !slices.Equal(failed, want) {
+			t.Errorf("jobs=%d failed repos = %v, want %v", jobs, failed, want)
+		}
+	}
+}
+
+func searchSummary(t *testing.T, cfg *config.Config, wsDir string, jobs int) string {
+	t.Helper()
+	matches, err := Search(cfg, wsDir, Options{Pattern: "needle", Jobs: jobs})
+	if err != nil {
+		t.Fatalf("Search(jobs=%d) error = %v", jobs, err)
+	}
+	var lines []string
+	for _, m := range matches {
+		lines = append(lines, fmt.Sprintf("%s/%s:%d:%s", m.Repo, m.File, m.Line, m.Content))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func initRepoWithNeedle(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{"a.go", "sub/b.go"} {
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("needle here\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range [][]string{
+		{"init"},
+		{"add", "-A"},
+		{"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "init", "--no-gpg-sign"},
+	} {
+		c := exec.Command("git", args...)
+		c.Dir = dir
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
 	}
 }

@@ -17,6 +17,7 @@ var (
 	searchRegex      bool
 	searchRepo       []string
 	searchJSON       bool
+	searchJobs       int
 )
 
 var searchCmd = &cobra.Command{
@@ -26,12 +27,22 @@ var searchCmd = &cobra.Command{
 	Long: `Search for a pattern across all repositories in the workspace.
 Uses ripgrep if available, falls back to built-in grep.
 
+--jobs searches several repositories at once. Results are reported in
+repos.yaml order regardless, so concurrency does not change the output. With
+ripgrep installed the gain is smaller, since each search is already
+multi-threaded.
+
 Examples:
   xr search TODO
   xr search -r project-a -g "*.go" "pattern"
+  xr search -j 8 "pattern"
   xr search --json "pattern"`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if searchJobs < 1 {
+			return fmt.Errorf("--jobs must be at least 1")
+		}
+
 		cfg, err := loadConfig()
 		if err != nil {
 			return err
@@ -50,6 +61,7 @@ Examples:
 			Context:    searchContext,
 			UseRegex:   searchRegex,
 			RepoFilter: searchRepo,
+			Jobs:       searchJobs,
 			OnRepoError: func(repo string, err error) {
 				failed = append(failed, output.RepoResult{Name: repo, Status: "failed", Error: err.Error()})
 				if !searchJSON {
@@ -147,5 +159,6 @@ func init() {
 	searchCmd.Flags().BoolVarP(&searchRegex, "regex", "e", false, "treat pattern as regular expression")
 	searchCmd.Flags().StringArrayVarP(&searchRepo, "repo", "r", nil, "limit search to specific repos")
 	searchCmd.Flags().BoolVar(&searchJSON, "json", false, "output in JSON format")
+	searchCmd.Flags().IntVarP(&searchJobs, "jobs", "j", 1, "number of repositories to search concurrently")
 	cobra.CheckErr(searchCmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))
 }
