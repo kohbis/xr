@@ -28,6 +28,7 @@ xr/
 │   ├── output/              # Human/JSON output helpers and result models
 │   ├── exitcode/            # Silent exit-status errors for self-reporting commands
 │   ├── diff/                # File comparison and git history search
+│   ├── doctor/              # Environment and workspace diagnosis (xr doctor)
 │   └── shellcomp/           # Shared repository-name shell completion
 ├── go.mod                   # Module: github.com/kohbis/xr, Go 1.25.7
 ├── Makefile                 # Build, test, lint, release targets
@@ -178,6 +179,7 @@ When adding/changing commands that prompt users, provide explicit non-interactiv
 - `xr repo gitignore`: `--yes` adds the entry without prompting; without a prompt available it returns an error rather than leaving `.gitignore` untouched.
 - `xr exec`: never prompts. It runs the command directly (no shell), skips repositories missing from the workspace, and exits non-zero via `internal/exitcode` when the command failed anywhere. `--jobs` uses `internal/parallel` to buffer per-repository output and flush it in configuration order.
 - `xr search`: never prompts. `--jobs`/`-j` searches repositories concurrently through `parallel.Results`; matches and `OnRepoError` calls stay in configuration order, so `-j` changes only the speed.
+- `xr doctor`: never prompts. It diagnoses the environment and exits non-zero only when a required tool is missing or a config exists but cannot be parsed.
 - `xr diff`: never prompts. `--jobs`/`-j` applies to every mode (git diff, `file`, `pattern`, `history`); each one collects through `diff.scanRepos`, so results stay in configuration order.
 
 ### Exit status
@@ -191,7 +193,7 @@ Prefer a consistent automation story across commands:
 - `--report <path>` for structured file output when the command produces aggregate results (for example, selected `xr diff` modes)
 - include per-repository status and summary counts when applicable
 
-**Current behavior:** `--json` is implemented on `xr repo list`, `xr repo sync`, `xr search`, `xr exec`, `xr worktree list` / `add` / `remove` / `prune`, and `xr diff file` / `pattern` / `history`. `--report` is implemented on `xr repo sync` and those `xr diff` subcommands. `xr repo sync --json` sets `SyncOptions.Quiet` and reads per-repository outcomes from `SyncResult.Repos`, which `output.SyncPrinter` records as it prints; it also disables prompts.
+**Current behavior:** `--json` is implemented on `xr repo list`, `xr repo sync`, `xr search`, `xr exec`, `xr worktree list` / `add` / `remove` / `prune`, `xr diff file` / `pattern` / `history`, and `xr doctor`. `--report` is implemented on `xr repo sync` and those `xr diff` subcommands. `xr repo sync --json` sets `SyncOptions.Quiet` and reads per-repository outcomes from `SyncResult.Repos`, which `output.SyncPrinter` records as it prints; it also disables prompts.
 
 `internal/search` must return the same matches whichever engine runs. `listFiles` (built on `git.ListFiles`) is the single file set both engines search, the glob and the binary check are applied in Go rather than delegated to ripgrep, and results are sorted per repository because ripgrep answers a batch out of order. ripgrep is invoked with explicit paths, batched to stay inside the argument-size limit, and with `--field-match-separator` / `--field-context-separator` so its output parses unambiguously. When changing either engine, extend `TestSearchRepo_EnginesAgree` rather than only the engine you touched.
 
@@ -252,6 +254,8 @@ Changelog excludes commits with types `docs`, `test`, and `chore`.
 - `git` — required for `xr init`, `xr repo sync`, `xr repo import`, `xr worktree`, `xr diff`, `xr diff history`
 - `diff` — required for `xr diff file` (pre-installed on most systems)
 - `rg` (ripgrep) — optional for `xr search`; falls back to a built-in implementation if absent
+
+`internal/doctor` is where that list is checked at runtime (`xr doctor`). A tool added here should gain a check there, marked required or optional to match: only a missing required tool or an unparsable config is a failure, while a not-yet-materialized workspace and a missing optional tool are warnings that still exit 0.
 
 ### Concurrency (`--jobs`)
 
