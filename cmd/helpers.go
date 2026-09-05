@@ -1,19 +1,16 @@
 package cmd
 
 import (
-	"path/filepath"
-
 	"github.com/kohbis/xr/internal/config"
 )
 
+// loadConfig loads the config selected by --config.
 func loadConfig() (*config.Config, error) {
-	cfgPath := cfgFile
-	if cfgPath == "" {
-		cfgPath = "repos.yaml"
-	}
-	return config.Load(cfgPath)
+	return config.LoadCommand(rootCmd)
 }
 
+// resolveWorkspaceDir returns the repositories directory, resolved relative to
+// the config file so commands behave the same from any working directory.
 func resolveWorkspaceDir(cfg *config.Config) (string, error) {
-	return filepath.Abs(cfg.Workspace)
+	return cfg.WorkspaceDir()
 }

@@ -13,24 +13,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func configPath(cmd *cobra.Command) string {
-	p := cmd.Root().PersistentFlags().Lookup("config").Value.String()
-	if p == "" {
-		p = "repos.yaml"
-	}
-	return p
-}
-
 func newManager(cmd *cobra.Command) (*wt.Manager, error) {
-	absCfgPath, err := filepath.Abs(configPath(cmd))
+	cfg, err := config.LoadCommand(cmd)
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := config.Load(absCfgPath)
-	if err != nil {
-		return nil, err
-	}
-	return wt.New(filepath.Dir(absCfgPath), cfg), nil
+	return wt.New(cfg.Root(), cfg), nil
 }
 
 // resolveTargetRepos turns --repo values into repositories. When none are given
@@ -82,7 +70,7 @@ func displayPath(path string) string {
 }
 
 func completeRepoFlag(cmd *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	names := shellcomp.RepoNameCandidates(configPath(cmd), nil, toComplete)
+	names := shellcomp.RepoNameCandidates(config.CommandPath(cmd), nil, toComplete)
 	return names, cobra.ShellCompDirectiveNoFileComp
 }
 

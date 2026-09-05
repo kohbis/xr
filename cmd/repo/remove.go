@@ -2,12 +2,10 @@ package repo
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/interactive"
 	"github.com/kohbis/xr/internal/shellcomp"
-	"github.com/kohbis/xr/internal/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -36,15 +34,11 @@ Without prompts, repo name(s) are required and --force or --yes is required to c
 		}
 		confirmed := removeForce || interactive.Yes(cmd)
 
-		cfgPath := cmd.Root().PersistentFlags().Lookup("config").Value.String()
-		if cfgPath == "" {
-			cfgPath = "repos.yaml"
-		}
-
-		cfg, err := config.Load(cfgPath)
+		cfg, err := loadConfig(cmd)
 		if err != nil {
 			return err
 		}
+		cfgPath := config.CommandPath(cmd)
 
 		reposByName := make(map[string]config.Repository, len(cfg.Repositories))
 		for _, r := range cfg.Repositories {
@@ -95,13 +89,7 @@ Without prompts, repo name(s) are required and --force or --yes is required to c
 		}
 
 		if !removeConfigOnly {
-			wsDir, err := filepath.Abs(cfg.Workspace)
-			if err != nil {
-				return err
-			}
-
-			ws := workspace.New(filepath.Dir(wsDir), cfg)
-			if err := ws.Remove(targets); err != nil {
+			if err := newWorkspace(cfg).Remove(targets); err != nil {
 				return fmt.Errorf("removing repos: %w", err)
 			}
 		}

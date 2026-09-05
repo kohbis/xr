@@ -2,7 +2,6 @@ package repo
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/exitcode"
@@ -82,7 +81,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	cfg, cfgPath, err := loadConfigWithPath(cmd)
+	cfg, err := loadConfig(cmd)
 	if err != nil {
 		return err
 	}
@@ -95,7 +94,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	ws := workspace.New(filepath.Dir(cfgPath), cfg)
+	ws := newWorkspace(cfg)
 	shouldPrompt, err := interactive.ShouldPrompt(cmd)
 	if err != nil {
 		return err

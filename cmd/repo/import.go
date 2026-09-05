@@ -10,7 +10,6 @@ import (
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/interactive"
-	"github.com/kohbis/xr/internal/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -27,27 +26,21 @@ Use --dry-run to scan and print discoveries without writing or prompting.
 For automation, use --yes to apply without prompting, or --non-interactive to fail
 instead of waiting for input (requires --yes to write).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfgPath := cmd.Root().PersistentFlags().Lookup("config").Value.String()
-		if cfgPath == "" {
-			cfgPath = "repos.yaml"
-		}
-
+		cfgPath := config.CommandPath(cmd)
 		cfg, err := config.Load(cfgPath)
 		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				cfg = &config.Config{Workspace: "./repos"}
-			} else {
+			if !errors.Is(err, os.ErrNotExist) {
 				return err
 			}
+			// No config yet: scan next to where it will be written.
+			absCfgPath, err := filepath.Abs(cfgPath)
+			if err != nil {
+				return err
+			}
+			cfg = &config.Config{Workspace: "./repos", Path: absCfgPath}
 		}
 
-		wsDir, err := filepath.Abs(cfg.Workspace)
-		if err != nil {
-			return err
-		}
-
-		ws := workspace.New(filepath.Dir(wsDir), cfg)
-		found, err := ws.ScanRepos()
+		found, err := newWorkspace(cfg).ScanRepos()
 		if err != nil {
 			return fmt.Errorf("scanning workspace: %w", err)
 		}
