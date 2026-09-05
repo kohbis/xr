@@ -6,6 +6,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/kohbis/xr/internal/output"
+	"github.com/kohbis/xr/internal/shellcomp"
 	wt "github.com/kohbis/xr/internal/worktree"
 	"github.com/spf13/cobra"
 )
@@ -89,4 +90,5 @@ func init() {
 	listCmd.Flags().StringArrayVarP(&listRepos, "repo", "r", nil, "limit to a repository (repeatable)")
 	listCmd.Flags().StringVarP(&listBranch, "branch", "b", "", "filter branches by glob pattern (e.g. 'feat-x*')")
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "output in JSON format")
+	cobra.CheckErr(listCmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))
 }
