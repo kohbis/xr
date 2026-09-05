@@ -40,6 +40,7 @@ Type is auto-inferred: local paths (`/…` or `~…`) → `symlink`; remote URLs
 | Compare a file across repos | `xr diff file PATH` |
 | Worktree in selected repos | `xr worktree add BRANCH -r NAME -r NAME` |
 | Clean up merged worktrees | `xr worktree prune --gone` |
+| Check tools and workspace | `xr doctor` |
 | Another workspace config | `xr --config PATH repo list` |
 
 **Preview vs execute:** `xr repo sync` runs by default; use `--dry-run` to preview. `xr repo import` prompts before writing; use `--yes` to apply unattended or `--dry-run` to scan only.
@@ -251,6 +252,25 @@ built from.
 
 ---
 
+### Environment check (`xr doctor`)
+
+```sh
+xr doctor          # check tools, repos.yaml, and workspace
+xr doctor --json   # machine-readable check results
+```
+
+Reports whether `git` and `diff` are on PATH (required), whether `rg` is
+(optional), which `repos.yaml` would be used, and how much of the workspace is
+materialized. Exits non-zero only when something is actually broken — a missing
+required tool, or a `repos.yaml` that cannot be parsed. A workspace that has not
+been cloned yet, a missing ripgrep, or no config at all are warnings and exit 0.
+
+**Agent use cases:**
+- Fail fast in CI with a clear reason, before a command fails inside a subprocess
+- Check which config a command would pick up: `xr doctor` prints the resolved path
+
+---
+
 ### Config path override
 
 All commands accept global flags:
@@ -282,6 +302,7 @@ Useful when operating on multiple independent workspaces from the same working d
 | `xr diff file` / `pattern` / `history` | yes | yes |
 | `xr diff` (default git diff) | no | no |
 | `xr repo sync` | yes | yes |
+| `xr doctor` | yes | no |
 
 ---
 
