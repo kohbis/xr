@@ -7,8 +7,10 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/git"
 	"github.com/kohbis/xr/internal/output"
+	"github.com/kohbis/xr/internal/shellcomp"
 	"github.com/spf13/cobra"
 )
 
@@ -16,12 +18,23 @@ const (
 	statusError = "!"
 )
 
-var listJSON bool
+var (
+	listJSON bool
+	listRepo []string
+)
 
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List repositories in the workspace",
-	Long:  `List all repositories defined in repos.yaml.`,
+	Long: `List all repositories defined in repos.yaml.
+
+Use --repo to limit the listing to specific repositories; they are shown in
+repos.yaml order regardless of the order the flags are given in.
+
+Examples:
+  xr repo list
+  xr repo list -r api -r web
+  xr repo list --json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := loadConfig(cmd)
 		if err != nil {
@@ -33,6 +46,9 @@ var listCmd = &cobra.Command{
 		}
 
 		repos := cfg.Repositories
+		if len(listRepo) > 0 {
+			repos = filterRepos(repos, listRepo)
+		}
 
 		rows := make([]map[string]string, 0, len(repos))
 		result := output.CommandResult{
@@ -85,6 +101,22 @@ func repoListResult(name, repoPath, status string) output.RepoResult {
 	return output.RepoResult{Name: name, Status: "failed", Error: "repository status unavailable"}
 }
 
+// filterRepos returns the repos whose name is in names, in repos.yaml order.
+// An unknown name matches nothing, the way --repo behaves in search and exec.
+func filterRepos(repos []config.Repository, names []string) []config.Repository {
+	want := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		want[n] = struct{}{}
+	}
+	filtered := make([]config.Repository, 0, len(repos))
+	for _, r := range repos {
+		if _, ok := want[r.Name]; ok {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
+}
+
 func repoRuntimeStatus(repoPath string) (currentBranch string, status string) {
 	snapshot, err := git.Inspect(repoPath)
 	if err != nil {
@@ -127,4 +159,6 @@ func formatSource(cfgPath, source string) string {
 func init() {
 	Cmd.AddCommand(listCmd)
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "output in JSON format")
+	listCmd.Flags().StringArrayVarP(&listRepo, "repo", "r", nil, "limit to specific repos (repeatable)")
+	cobra.CheckErr(listCmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))
 }

@@ -67,6 +67,7 @@ Sets up a workspace from `repos.yaml`: creates the directory, clones remote repo
 
 ```sh
 xr repo list                            # show all repos with type, branch, path, source
+xr repo list -r api -r web              # limit to specific repos
 xr repo list --json                     # machine-readable repo status output
 xr repo add <name> -s <source>          # add a repo (type inferred from source)
 xr repo add <name> -s <source> -p sub/dir     # specify relative path in workspace
