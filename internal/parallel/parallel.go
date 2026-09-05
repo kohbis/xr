@@ -24,6 +24,47 @@ func Jobs(jobs, n int) int {
 	return jobs
 }
 
+// Results calls fn once for each of the n items, using at most jobs concurrent
+// workers, and returns what fn produced for each item in index order.
+//
+// It is the counterpart of Run for work that returns a value instead of writing
+// output: the caller reports the results itself, so ordering is restored by the
+// index rather than by flushing buffers. fn runs on several goroutines at once
+// and must not touch shared state.
+func Results[T any](n, jobs int, fn func(i int) T) []T {
+	results := make([]T, n)
+	if Jobs(jobs, n) < 2 {
+		for i := range n {
+			results[i] = fn(i)
+		}
+		return results
+	}
+
+	queue := make(chan int)
+	go func() {
+		for i := range n {
+			queue <- i
+		}
+		close(queue)
+	}()
+
+	var wg sync.WaitGroup
+	for range Jobs(jobs, n) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Each worker writes only to its own index, so the slice needs no
+			// further synchronisation.
+			for i := range queue {
+				results[i] = fn(i)
+			}
+		}()
+	}
+	wg.Wait()
+
+	return results
+}
+
 // Run calls fn once for each of the n items, using at most jobs concurrent
 // workers, and writes everything fn produces to stdout and stderr in index
 // order.

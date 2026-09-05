@@ -177,6 +177,7 @@ When adding/changing commands that prompt users, provide explicit non-interactiv
 - `xr init`: interactive only; `--non-interactive` returns an error (use `xr repo sync --clone-missing`).
 - `xr repo gitignore`: `--yes` adds the entry without prompting; without a prompt available it returns an error rather than leaving `.gitignore` untouched.
 - `xr exec`: never prompts. It runs the command directly (no shell), skips repositories missing from the workspace, and exits non-zero via `internal/exitcode` when the command failed anywhere. `--jobs` uses `internal/parallel` to buffer per-repository output and flush it in configuration order.
+- `xr search`: never prompts. `--jobs`/`-j` searches repositories concurrently through `parallel.Results`; matches and `OnRepoError` calls stay in configuration order, so `-j` changes only the speed.
 
 ### Exit status
 
@@ -253,9 +254,10 @@ Changelog excludes commits with types `docs`, `test`, and `chore`.
 
 ### Concurrency (`--jobs`)
 
-`internal/parallel` is the single implementation of "run N items concurrently, print in order":
+`internal/parallel` is the single implementation of "run N items concurrently, keep the order":
 
 - `parallel.Run(n, jobs, stdout, stderr, fn)` gives each item its own buffers and flushes them in index order, so a concurrent run produces byte-identical output to a sequential one.
+- `parallel.Results(n, jobs, fn)` is the counterpart for work that returns a value rather than writing output (`internal/search`): the results come back in index order, and the `cmd/` layer reports them itself. Per-repository callbacks such as `search.Options.OnRepoError` must then be invoked from that ordered walk, not from inside a worker.
 - Below two effective workers it passes the real streams through, so output still streams live.
 - stdout and stderr are buffered separately; redirection must keep working. Subprocess output must be routed to the matching stream (see `output.SyncPrinter.Writer` / `ErrWriter`) rather than folded into one.
 

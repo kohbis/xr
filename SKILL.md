@@ -144,6 +144,7 @@ xr search -g "cmd/*.go" "TODO"     # glob with a separator matches the path
 xr search -C 3 "panic"             # 3 lines of context
 xr search -r project-a "main"      # limit to one repo
 xr search -r a -r b "pattern"      # limit to multiple repos
+xr search -j 8 "pattern"           # search 8 repos concurrently
 xr search --json "pattern"         # machine-readable match output
 ```
 
@@ -153,7 +154,7 @@ out of the results while tracked dot directories such as `.github` are included.
 Binary files are skipped. A glob without a separator matches the file name at any
 depth (`*.go`), one containing a separator matches the relative path
 (`cmd/*.go`). Results and their order are the same whether or not ripgrep is
-installed.
+installed, and whatever `-j` is set to.
 
 **Agent use cases:**
 - Find all usages of a symbol, pattern, or interface across repos
