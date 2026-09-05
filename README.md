@@ -131,7 +131,7 @@ Global flags: `--non-interactive` (disable prompts; fail instead of blocking) an
 | `xr init` | Interactive only; `--non-interactive` returns an error |
 | `xr worktree add` | `--repo` is required (it prompts otherwise); add `--create` when the branch is new |
 | `xr worktree remove` / `prune --gone` | Pass `--yes`; `--force` additionally discards uncommitted changes |
-| Machine-readable output | `--json` on `xr repo list`, `xr search`, `xr exec`, `xr worktree list` / `add` / `remove` / `prune`, and `xr diff file` / `pattern` / `history`; `--no-color` globally |
+| Machine-readable output | `--json` on `xr repo list`, `xr repo sync`, `xr search`, `xr exec`, `xr worktree list` / `add` / `remove` / `prune`, and `xr diff file` / `pattern` / `history`; `--report PATH` on `xr repo sync` and the `xr diff` subcommands; `--no-color` globally |
 
 See [`SKILL.md`](./SKILL.md) for agent-oriented detail.
 
@@ -153,7 +153,10 @@ xr repo sync --clone-missing --dry-run    # preview what would be materialized
 ```
 
 `xr repo sync` exits non-zero when any repository fails, so a failed clone or
-fetch stops a CI pipeline. Skipped repositories are not failures.
+fetch stops a CI pipeline. Skipped repositories are not failures. Add `--json`
+to get per-repository status, skip reason or error, and the steps taken instead
+of progress output, or `--report sync.json` to write that document to a file
+while keeping the terminal output.
 
 On a large workspace, `-j` / `--jobs` syncs several repositories at once. Output
 stays grouped and ordered by repository, but each block appears only once that

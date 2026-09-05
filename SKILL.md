@@ -80,6 +80,8 @@ xr repo sync --clone-missing            # clone missing repos / recreate missing
 xr repo sync -j 8                       # sync 8 repos concurrently (no prompts above 1)
 xr repo sync --allow-dirty              # skip dirty-repo prompts (recommended with --non-interactive)
 xr repo sync --create-branch-if-missing --update  # create local branch if missing (requires --update)
+xr repo sync --update --allow-dirty --json  # per-repo status as JSON (no prompts)
+xr repo sync --update --report sync.json    # same document written to a file
 xr repo import                          # discover repos in workspace dir and add to repos.yaml
 xr repo import --yes                    # apply discoveries without prompting
 xr repo import --dry-run                # preview discovered repos without writing
@@ -89,6 +91,8 @@ xr repo import --dry-run                # preview discovered repos without writi
 - Materialize a workspace from a committed `repos.yaml` without prompts:
   `xr repo sync --clone-missing --update` (`xr init` is interactive and cannot be used here).
   `sync` exits non-zero if any repository fails, so the exit status is enough to gate a pipeline.
+  `--json` reports each repository's status (`synced`, `skipped`, `failed`), its skip reason or
+  error, and the steps taken, for callers that need to know which repository failed and why.
 - Enumerate the workspace before operating: `xr repo list`
 - Add a newly created repo to the workspace: `xr repo add`
 - Ensure all repos are on their configured branches: `xr repo sync`
@@ -242,7 +246,7 @@ Useful when operating on multiple independent workspaces from the same working d
 | `xr worktree list` / `add` / `remove` / `prune` | yes | no |
 | `xr diff file` / `pattern` / `history` | yes | yes |
 | `xr diff` (default git diff) | no | no |
-| `xr repo sync` | not yet | not yet |
+| `xr repo sync` | yes | yes |
 
 ---
 
@@ -266,6 +270,6 @@ Global flags:
 
 Tips:
 
-- Prefer `--json` on `repo list`, `search`, and `diff file` / `pattern` / `history` when chaining output into other tools.
+- Prefer `--json` on `repo list`, `repo sync`, `search`, `exec`, and `diff file` / `pattern` / `history` when chaining output into other tools.
 - Add `--no-color` for stable log parsing.
 - For `repo sync`, use `--dry-run` to preview before running without it.
