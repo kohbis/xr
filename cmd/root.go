@@ -49,7 +49,7 @@ func SetVersion(v string) {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: repos.yaml in current directory)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: nearest repos.yaml in this or a parent directory)")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable ANSI colors in output")
 	rootCmd.PersistentFlags().BoolVar(&nonInteractive, "non-interactive", false, "disable prompts; fail instead of waiting for input")
 	rootCmd.PersistentFlags().BoolVar(&yes, "yes", false, "confirm destructive or write actions without prompting")

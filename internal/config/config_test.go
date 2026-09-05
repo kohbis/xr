@@ -402,6 +402,10 @@ func TestWorkspaceDir_InMemoryConfigUsesCwd(t *testing.T) {
 }
 
 func TestCommandPath(t *testing.T) {
+	// An empty directory with no repos.yaml above it keeps the fallback
+	// assertions independent of where the tests happen to run.
+	t.Chdir(t.TempDir())
+
 	if got := CommandPath(nil); got != DefaultPath {
 		t.Errorf("CommandPath(nil) = %q", got)
 	}
@@ -418,4 +422,95 @@ func TestCommandPath(t *testing.T) {
 	if got := CommandPath(child); got != "/x/repos.yaml" {
 		t.Errorf("CommandPath(set) = %q", got)
 	}
+}
+
+func TestCommandPath_FindsConfigAboveWorkingDirectory(t *testing.T) {
+	root := t.TempDir()
+	cfgPath := filepath.Join(root, DefaultPath)
+	if err := os.WriteFile(cfgPath, []byte("workspace: ./repos\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Stand where a user working inside a repository of the workspace would.
+	repoDir := filepath.Join(root, "repos", "api")
+	if err := os.MkdirAll(repoDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repoDir)
+
+	got := CommandPath(nil)
+	if !sameFile(t, got, cfgPath) {
+		t.Errorf("CommandPath() = %q, want the config at %q", got, cfgPath)
+	}
+
+	// --config still wins over discovery.
+	cmd := &cobra.Command{Use: "xr"}
+	cmd.PersistentFlags().String("config", "", "")
+	if err := cmd.PersistentFlags().Set("config", "other/repos.yaml"); err != nil {
+		t.Fatal(err)
+	}
+	if got := CommandPath(cmd); got != "other/repos.yaml" {
+		t.Errorf("CommandPath(--config) = %q, want the flag value", got)
+	}
+}
+
+func TestFindPath(t *testing.T) {
+	root := t.TempDir()
+	cfgPath := filepath.Join(root, DefaultPath)
+	if err := os.WriteFile(cfgPath, []byte("workspace: ./repos\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(root, "repos", "api", "internal", "pkg")
+	if err := os.MkdirAll(nested, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// A directory named repos.yaml must not be mistaken for the config.
+	decoy := t.TempDir()
+	decoyDir := filepath.Join(decoy, DefaultPath)
+	if err := os.MkdirAll(decoyDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name  string
+		start string
+		want  string
+	}{
+		{name: "config in the start directory", start: root, want: cfgPath},
+		{name: "config several levels up", start: nested, want: cfgPath},
+		{name: "no config anywhere above", start: decoy, want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FindPath(tt.start)
+			if tt.want == "" {
+				if got != "" {
+					t.Fatalf("FindPath(%q) = %q, want no match", tt.start, got)
+				}
+				return
+			}
+			if !sameFile(t, got, tt.want) {
+				t.Fatalf("FindPath(%q) = %q, want %q", tt.start, got, tt.want)
+			}
+		})
+	}
+}
+
+// sameFile compares paths by identity, since a temp directory may be reached
+// through a symlink (/var vs /private/var on macOS).
+func sameFile(t *testing.T, a, b string) bool {
+	t.Helper()
+	if a == "" || b == "" {
+		return a == b
+	}
+	fa, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	fb, err := os.Stat(b)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(fa, fb)
 }

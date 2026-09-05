@@ -41,14 +41,43 @@ type Config struct {
 const DefaultPath = "repos.yaml"
 
 // CommandPath returns the config file selected by the global --config flag of
-// cmd's root command, or DefaultPath when the flag is unset.
+// cmd's root command. Without the flag it is the nearest repos.yaml at or above
+// the working directory, so commands work from inside a repository of the
+// workspace; when there is none, it falls back to DefaultPath in the working
+// directory, which is where a config would be created.
 func CommandPath(cmd *cobra.Command) string {
 	if cmd != nil {
 		if f := cmd.Root().PersistentFlags().Lookup("config"); f != nil && f.Value.String() != "" {
 			return f.Value.String()
 		}
 	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return DefaultPath
+	}
+	if found := FindPath(wd); found != "" {
+		return found
+	}
 	return DefaultPath
+}
+
+// FindPath returns the nearest repos.yaml at or above startDir, or "" when no
+// parent directory up to the filesystem root holds one. The walk deliberately
+// does not stop at a repository boundary: the workspace config sits above the
+// repositories it manages, so it is found from inside one of them.
+func FindPath(startDir string) string {
+	dir := startDir
+	for {
+		candidate := filepath.Join(dir, DefaultPath)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
 }
 
 // LoadCommand loads the config selected by the global --config flag.
