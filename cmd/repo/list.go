@@ -58,13 +58,7 @@ var listCmd = &cobra.Command{
 				"path":    r.Path,
 				"source":  source,
 			})
-			repoStatus := "ok"
-			repoErr := ""
-			if status == statusError {
-				repoStatus = "failed"
-				repoErr = "repository status unavailable"
-			}
-			result.Repos = append(result.Repos, output.RepoResult{Name: r.Name, Status: repoStatus, Error: repoErr})
+			result.Repos = append(result.Repos, repoListResult(r.Name, repoPath, status))
 
 			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Name, r.Type, r.Branch, current, status, r.Path, source); err != nil {
 				return err
@@ -76,6 +70,19 @@ var listCmd = &cobra.Command{
 		}
 		return w.Flush()
 	},
+}
+
+// repoListResult classifies a repository for --json. A repository absent from
+// the workspace is "missing" rather than "failed": like sync and exec skip it,
+// it is an expected state before 'xr repo sync --clone-missing', not an error.
+func repoListResult(name, repoPath, status string) output.RepoResult {
+	if status != statusError {
+		return output.RepoResult{Name: name, Status: "ok"}
+	}
+	if _, err := os.Lstat(repoPath); err != nil {
+		return output.RepoResult{Name: name, Status: "missing", Error: "missing in workspace"}
+	}
+	return output.RepoResult{Name: name, Status: "failed", Error: "repository status unavailable"}
 }
 
 func repoRuntimeStatus(repoPath string) (currentBranch string, status string) {

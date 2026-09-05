@@ -44,7 +44,9 @@ Type is auto-inferred: local paths (`/…` or `~…`) → `symlink`; remote URLs
 
 **Preview vs execute:** `xr repo sync` runs by default; use `--dry-run` to preview. `xr repo import` prompts before writing; use `--yes` to apply unattended or `--dry-run` to scan only.
 
-**Config paths:** most commands use global `--config`. `xr init` uses `-f` / `--file` for the repos.yaml path during setup (not `--config`).
+**Config paths:** most commands use global `--config`. `xr init` uses `-f` / `--file` for the repos.yaml path during setup (not `--config`). The `workspace` and `worktrees` directories are resolved relative to the config file, not the working directory.
+
+**Exit status:** commands that report per-repository results (`repo sync`, `exec`, `worktree add` / `remove` / `prune`, `search`, `diff pattern`) exit non-zero when any repository failed, so the exit status alone can gate a pipeline. Repositories missing from the workspace are skipped, not failed.
 
 ---
 
@@ -231,6 +233,9 @@ All commands accept global flags:
 xr --config path/to/repos.yaml <command>
 xr --no-color <command>   # disable ANSI colors for machine logs
 ```
+
+Directories named in repos.yaml (`workspace`, `worktrees`) are resolved relative
+to that file, so `--config` can point at another workspace from any directory.
 
 Useful when operating on multiple independent workspaces from the same working directory.
 

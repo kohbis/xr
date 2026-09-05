@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/kohbis/xr/internal/exitcode"
 	"github.com/kohbis/xr/internal/output"
 	"github.com/kohbis/xr/internal/search"
 	"github.com/kohbis/xr/internal/shellcomp"
@@ -93,12 +94,15 @@ Examples:
 			},
 		}
 		if searchJSON {
-			return output.PrintJSON(result)
+			if err := output.PrintJSON(result); err != nil {
+				return err
+			}
+			return searchExitCode(cmd, failed)
 		}
 
 		if len(matches) == 0 {
 			fmt.Println("No matches found.")
-			return nil
+			return searchExitCode(cmd, failed)
 		}
 
 		currentRepo := ""
@@ -111,8 +115,18 @@ Examples:
 		}
 
 		fmt.Printf("\n%d match(es) found.\n", countMatches(matches))
-		return nil
+		return searchExitCode(cmd, failed)
 	},
+}
+
+// searchExitCode exits non-zero when a repository could not be searched, so a
+// caller knows the result may be incomplete. Missing repositories are skipped,
+// not failed.
+func searchExitCode(cmd *cobra.Command, failed []output.RepoResult) error {
+	if len(failed) == 0 {
+		return nil
+	}
+	return exitcode.Failed(cmd)
 }
 
 func countMatches(matches []search.Match) int {

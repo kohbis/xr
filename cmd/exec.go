@@ -68,9 +68,7 @@ Examples:
 
 		if result.Failed > 0 {
 			// Failures are already reported per repository.
-			cmd.SilenceErrors = true
-			cmd.SilenceUsage = true
-			return exitcode.Silent(1)
+			return exitcode.Failed(cmd)
 		}
 		return nil
 	},

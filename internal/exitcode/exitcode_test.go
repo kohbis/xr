@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestFrom(t *testing.T) {
@@ -33,5 +35,17 @@ func TestFrom(t *testing.T) {
 func TestErrorMessage(t *testing.T) {
 	if got := Silent(1).Error(); got != "exit status 1" {
 		t.Fatalf("Error() = %q, want %q", got, "exit status 1")
+	}
+}
+
+func TestFailed(t *testing.T) {
+	cmd := &cobra.Command{Use: "x"}
+	err := Failed(cmd)
+	code, ok := From(err)
+	if !ok || code != 1 {
+		t.Fatalf("From(Failed()) = (%d,%t), want (1,true)", code, ok)
+	}
+	if !cmd.SilenceErrors || !cmd.SilenceUsage {
+		t.Fatal("Failed() must silence cobra's error and usage output")
 	}
 }

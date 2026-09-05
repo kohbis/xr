@@ -55,7 +55,7 @@ Examples:
 		}
 		if len(repos) == 0 {
 			if addJSON {
-				return reportResult("worktree add", &wt.Result{}, true)
+				return reportResult(cmd, "worktree add", &wt.Result{}, true)
 			}
 			fmt.Println("No repositories selected.")
 			return nil
@@ -69,7 +69,7 @@ Examples:
 		if err != nil {
 			return err
 		}
-		return reportResult("worktree add", result, addJSON)
+		return reportResult(cmd, "worktree add", result, addJSON)
 	},
 }
 
