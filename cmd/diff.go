@@ -16,6 +16,7 @@ var (
 	diffRepo   []string
 	diffJSON   bool
 	diffReport string
+	diffJobs   int
 )
 
 var diffCmd = &cobra.Command{
@@ -82,6 +83,7 @@ var diffHistoryCmd = &cobra.Command{
 func registerDiffRepoFlag(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVarP(&diffRepo, "repo", "r", nil, "limit to repo names")
 	cobra.CheckErr(cmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))
+	cmd.Flags().IntVarP(&diffJobs, "jobs", "j", 1, "number of repositories to scan concurrently")
 }
 
 func registerDiffOutputFlags(cmd *cobra.Command) {
@@ -89,7 +91,12 @@ func registerDiffOutputFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&diffReport, "report", "", "write JSON report to file")
 }
 
+// loadDiffWorkspace also validates --jobs, since every diff mode goes through
+// it before scanning repositories.
 func loadDiffWorkspace() (*config.Config, string, error) {
+	if diffJobs < 1 {
+		return nil, "", fmt.Errorf("--jobs must be at least 1")
+	}
 	cfg, err := loadConfig()
 	if err != nil {
 		return nil, "", err
@@ -122,7 +129,7 @@ func runDiffGit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	failed := 0
-	for _, r := range diff.GitDiff(cfg, wsDir, diffRepo, args) {
+	for _, r := range diff.GitDiff(cfg, wsDir, diffRepo, args, diffJobs) {
 		output.PrintRepoHeader(r.Repo)
 		fmt.Print(r.Output)
 		if r.Error != "" {
@@ -139,7 +146,7 @@ func runDiffFile(path string) error {
 		return err
 	}
 
-	comparisons, err := diff.CompareFile(cfg, wsDir, path, diffRepo)
+	comparisons, err := diff.CompareFile(cfg, wsDir, path, diffRepo, diffJobs)
 	if err != nil {
 		return fmt.Errorf("comparing files: %w", err)
 	}
@@ -182,7 +189,7 @@ func runDiffPattern(cmd *cobra.Command, pattern string) error {
 		return err
 	}
 
-	results, err := diff.SearchPattern(cfg, wsDir, pattern, diffRepo)
+	results, err := diff.SearchPattern(cfg, wsDir, pattern, diffRepo, diffJobs)
 	if err != nil {
 		return fmt.Errorf("searching pattern: %w", err)
 	}
@@ -242,7 +249,7 @@ func runDiffHistory(cmd *cobra.Command, query string) error {
 		return err
 	}
 
-	history, err := diff.SearchHistoryResults(cfg, wsDir, query, diffRepo)
+	history, err := diff.SearchHistoryResults(cfg, wsDir, query, diffRepo, diffJobs)
 	if err != nil {
 		return err
 	}
