@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/kohbis/xr/internal/config"
-	"github.com/kohbis/xr/internal/output"
 )
 
 type Options struct {
@@ -20,6 +19,11 @@ type Options struct {
 	Context    int
 	IgnoreCase bool
 	UseRegex   bool
+
+	// OnRepoError is called when one repository could not be searched. The
+	// search continues with the remaining repositories. When nil, such errors
+	// are dropped.
+	OnRepoError func(repo string, err error)
 }
 
 type Match struct {
@@ -45,7 +49,9 @@ func Search(cfg *config.Config, wsDir string, opts Options) ([]Match, error) {
 
 		repoMatches, err := searchRepo(repo.Name, repoPath, opts)
 		if err != nil {
-			output.PrintWarning(fmt.Sprintf("searching %s: %v", repo.Name, err))
+			if opts.OnRepoError != nil {
+				opts.OnRepoError(repo.Name, err)
+			}
 			continue
 		}
 		matches = append(matches, repoMatches...)
