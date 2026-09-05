@@ -23,11 +23,11 @@ var listCmd = &cobra.Command{
 	Short: "List repositories in the workspace",
 	Long:  `List all repositories defined in repos.yaml.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, cfgPath, err := loadConfigWithPath(cmd)
+		cfg, err := loadConfig(cmd)
 		if err != nil {
 			return err
 		}
-		wsDir, err := resolveWorkspaceDirFromConfigPath(cfgPath, cfg)
+		wsDir, err := cfg.WorkspaceDir()
 		if err != nil {
 			return fmt.Errorf("resolving workspace path: %w", err)
 		}
@@ -48,7 +48,7 @@ var listCmd = &cobra.Command{
 		for _, r := range repos {
 			repoPath := filepath.Join(wsDir, r.Path)
 			current, status := repoRuntimeStatus(repoPath)
-			source := formatSource(cfgPath, r.Source)
+			source := formatSource(cfg.Path, r.Source)
 			rows = append(rows, map[string]string{
 				"name":    r.Name,
 				"type":    string(r.Type),

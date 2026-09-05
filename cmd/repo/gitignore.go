@@ -4,10 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
-	"github.com/kohbis/xr/internal/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -15,16 +13,11 @@ import (
 var GitignoreCmd = &cobra.Command{
 	Use:   "gitignore",
 	Short: "Update .gitignore",
-	Long:  `Add workspace directory entries to .gitignore in the current workspace.`,
+	Long:  `Add the workspace directory to the .gitignore next to repos.yaml.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := loadConfig(cmd)
 		if err != nil {
 			return err
-		}
-
-		absDir, err := filepath.Abs(".")
-		if err != nil {
-			return fmt.Errorf("resolving directory: %w", err)
 		}
 
 		fmt.Printf("Add repos directory (%s) to .gitignore? [y/N]: ", cfg.Workspace)
@@ -32,8 +25,7 @@ var GitignoreCmd = &cobra.Command{
 		answer = strings.TrimSpace(strings.ToLower(answer))
 		ignoreWorkspace := answer == "y" || answer == "yes"
 
-		ws := workspace.New(absDir, cfg)
-		if err := ws.CreateGitignore(ignoreWorkspace); err != nil {
+		if err := newWorkspace(cfg).CreateGitignore(ignoreWorkspace); err != nil {
 			return fmt.Errorf("creating .gitignore: %w", err)
 		}
 

@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestLoad_ValidConfig(t *testing.T) {
@@ -341,5 +343,79 @@ func TestReload_RejectsUnknownType(t *testing.T) {
 	_, err := Reload(cfg)
 	if err == nil {
 		t.Fatal("Reload() expected error for unknown type, got nil")
+	}
+}
+
+func TestLoad_ResolvesDirsRelativeToConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "repos.yaml")
+	if err := os.WriteFile(cfgPath, []byte("workspace: ./repos\nworktrees: ./wt\nrepositories: []\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Path != cfgPath {
+		t.Errorf("Path = %q, want %q", cfg.Path, cfgPath)
+	}
+	if cfg.Root() != dir {
+		t.Errorf("Root() = %q, want %q", cfg.Root(), dir)
+	}
+	ws, err := cfg.WorkspaceDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws != filepath.Join(dir, "repos") {
+		t.Errorf("WorkspaceDir() = %q, want %q", ws, filepath.Join(dir, "repos"))
+	}
+	wt, err := cfg.WorktreesDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wt != filepath.Join(dir, "wt") {
+		t.Errorf("WorktreesDir() = %q, want %q", wt, filepath.Join(dir, "wt"))
+	}
+
+	reloaded, err := Reload(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.Path != cfgPath {
+		t.Errorf("Reload dropped Path: %q", reloaded.Path)
+	}
+}
+
+func TestWorkspaceDir_InMemoryConfigUsesCwd(t *testing.T) {
+	cfg := &Config{Workspace: "./repos"}
+	ws, err := cfg.WorkspaceDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws != filepath.Join(cwd, "repos") {
+		t.Errorf("WorkspaceDir() = %q, want %q", ws, filepath.Join(cwd, "repos"))
+	}
+}
+
+func TestCommandPath(t *testing.T) {
+	if got := CommandPath(nil); got != DefaultPath {
+		t.Errorf("CommandPath(nil) = %q", got)
+	}
+	root := &cobra.Command{Use: "xr"}
+	root.PersistentFlags().String("config", "", "")
+	child := &cobra.Command{Use: "child"}
+	root.AddCommand(child)
+	if got := CommandPath(child); got != DefaultPath {
+		t.Errorf("CommandPath(unset) = %q", got)
+	}
+	if err := root.PersistentFlags().Set("config", "/x/repos.yaml"); err != nil {
+		t.Fatal(err)
+	}
+	if got := CommandPath(child); got != "/x/repos.yaml" {
+		t.Errorf("CommandPath(set) = %q", got)
 	}
 }

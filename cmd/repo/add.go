@@ -4,12 +4,10 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/interactive"
-	"github.com/kohbis/xr/internal/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -74,15 +72,11 @@ If a repository with the same name or path already exists, an error is returned.
 			addBranch = promptOptional(reader, "Branch (optional)", "")
 		}
 
-		cfgPath := cmd.Root().PersistentFlags().Lookup("config").Value.String()
-		if cfgPath == "" {
-			cfgPath = "repos.yaml"
-		}
-
-		cfg, err := config.Load(cfgPath)
+		cfg, err := loadConfig(cmd)
 		if err != nil {
 			return err
 		}
+		cfgPath := config.CommandPath(cmd)
 
 		repoPath := addPath
 
@@ -161,13 +155,7 @@ func setupRepo(cfg *config.Config, repo config.Repository) error {
 		}
 	}
 
-	wsDir, err := filepath.Abs(reloadedCfg.Workspace)
-	if err != nil {
-		return err
-	}
-
-	ws := workspace.New(filepath.Dir(wsDir), reloadedCfg)
-	if err := ws.Add(resolved); err != nil {
+	if err := newWorkspace(reloadedCfg).Add(resolved); err != nil {
 		return fmt.Errorf("setting up repo: %w", err)
 	}
 

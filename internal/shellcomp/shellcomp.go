@@ -9,19 +9,11 @@ import (
 
 // CompleteRepoNames completes positional arguments with repository names from repos.yaml.
 func CompleteRepoNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	names := RepoNameCandidates(configPath(cmd), args, toComplete)
+	names := RepoNameCandidates(config.CommandPath(cmd), args, toComplete)
 	if len(names) == 0 {
 		return nil, cobra.ShellCompDirectiveDefault
 	}
 	return names, cobra.ShellCompDirectiveNoFileComp
-}
-
-func configPath(cmd *cobra.Command) string {
-	p := cmd.Root().PersistentFlags().Lookup("config").Value.String()
-	if p == "" {
-		return "repos.yaml"
-	}
-	return p
 }
 
 // RepoNameCandidates returns names in cfg that match prefix and are not listed in exclude.

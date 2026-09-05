@@ -1,34 +1,18 @@
 package repo
 
 import (
-	"path/filepath"
-
 	"github.com/kohbis/xr/internal/config"
+	"github.com/kohbis/xr/internal/workspace"
 	"github.com/spf13/cobra"
 )
 
+// loadConfig loads the config selected by --config. The returned config knows
+// its own path, so workspace directories resolve relative to it.
 func loadConfig(cmd *cobra.Command) (*config.Config, error) {
-	cfg, _, err := loadConfigWithPath(cmd)
-	return cfg, err
+	return config.LoadCommand(cmd)
 }
 
-func loadConfigWithPath(cmd *cobra.Command) (*config.Config, string, error) {
-	cfgPath := cmd.Root().PersistentFlags().Lookup("config").Value.String()
-	if cfgPath == "" {
-		cfgPath = "repos.yaml"
-	}
-	absCfgPath, err := filepath.Abs(cfgPath)
-	if err != nil {
-		return nil, "", err
-	}
-	cfg, err := config.Load(absCfgPath)
-	if err != nil {
-		return nil, "", err
-	}
-	return cfg, absCfgPath, nil
-}
-
-func resolveWorkspaceDirFromConfigPath(cfgPath string, cfg *config.Config) (string, error) {
-	cfgDir := filepath.Dir(cfgPath)
-	return filepath.Abs(filepath.Clean(filepath.Join(cfgDir, cfg.Workspace)))
+// newWorkspace returns the workspace rooted at the config file's directory.
+func newWorkspace(cfg *config.Config) *workspace.Workspace {
+	return workspace.New(cfg.Root(), cfg)
 }
