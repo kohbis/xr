@@ -257,6 +257,10 @@ xr --config path/to/repos.yaml <command>
 xr --no-color <command>   # disable ANSI colors for machine logs
 ```
 
+Without `--config`, xr uses the nearest `repos.yaml` in the working directory or
+any parent, so commands also work from inside one of the managed repositories
+(`repos/api/…`) without pointing at the config by hand.
+
 Directories named in repos.yaml (`workspace`, `worktrees`) are resolved relative
 to that file, so `--config` can point at another workspace from any directory.
 

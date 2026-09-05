@@ -127,6 +127,8 @@ All four must pass before merging.
 
 The config is loaded via `internal/config.Load(path)` and saved via `config.Save(path, cfg)`. In `cmd/`, use `config.LoadCommand(cmd)` / `config.CommandPath(cmd)` rather than reading the `--config` flag by hand.
 
+Without `--config`, `CommandPath` resolves to the nearest `repos.yaml` at or above the working directory (`config.FindPath`), so commands work from inside a repository of the workspace. The walk does not stop at a repository boundary, since the config sits above the repositories it manages. When no config exists anywhere above, it falls back to `repos.yaml` in the working directory — the path where `xr repo import` would create one.
+
 A loaded config records its own path (`Config.Path`). `workspace` and `worktrees` are resolved relative to that file's directory through `Config.Root()`, `WorkspaceDir()` and `WorktreesDir()`; commands must go through these rather than `filepath.Abs(cfg.Workspace)`, so `xr --config other/repos.yaml ...` behaves the same from any working directory.
 
 Top-level keys:
