@@ -65,7 +65,7 @@ Examples:
 					}
 					if !confirmed {
 						if pruneJSON {
-							return reportResult("worktree prune", combined, true)
+							return reportResult(cmd, "worktree prune", combined, true)
 						}
 						fmt.Println("Aborted.")
 						return nil
@@ -85,7 +85,7 @@ Examples:
 		}
 		combined.Outcomes = append(combined.Outcomes, result.Outcomes...)
 
-		return reportResult("worktree prune", combined, pruneJSON)
+		return reportResult(cmd, "worktree prune", combined, pruneJSON)
 	},
 }
 

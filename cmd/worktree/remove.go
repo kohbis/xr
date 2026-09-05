@@ -51,7 +51,7 @@ Examples:
 		}
 		if len(entries) == 0 {
 			if removeJSON {
-				return reportResult("worktree remove", &wt.Result{}, true)
+				return reportResult(cmd, "worktree remove", &wt.Result{}, true)
 			}
 			fmt.Printf("No worktrees match %q.\n", pattern)
 			return nil
@@ -71,7 +71,7 @@ Examples:
 			}
 			if !confirmed {
 				if removeJSON {
-					return reportResult("worktree remove", &wt.Result{}, true)
+					return reportResult(cmd, "worktree remove", &wt.Result{}, true)
 				}
 				fmt.Println("Aborted.")
 				return nil
@@ -82,7 +82,7 @@ Examples:
 		if err != nil {
 			return err
 		}
-		return reportResult("worktree remove", result, removeJSON)
+		return reportResult(cmd, "worktree remove", result, removeJSON)
 	},
 }
 

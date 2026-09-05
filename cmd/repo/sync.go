@@ -225,9 +225,7 @@ func syncExitCode(cmd *cobra.Command, result *workspace.SyncResult) error {
 	if result.Failed == 0 {
 		return nil
 	}
-	cmd.SilenceErrors = true
-	cmd.SilenceUsage = true
-	return exitcode.Silent(1)
+	return exitcode.Failed(cmd)
 }
 
 func init() {

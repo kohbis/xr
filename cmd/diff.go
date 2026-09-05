@@ -6,6 +6,7 @@ import (
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/diff"
+	"github.com/kohbis/xr/internal/exitcode"
 	"github.com/kohbis/xr/internal/output"
 	"github.com/kohbis/xr/internal/shellcomp"
 	"github.com/spf13/cobra"
@@ -55,8 +56,8 @@ var diffPatternCmd = &cobra.Command{
 	Use:   "pattern <regex>",
 	Short: "Show where a pattern appears in each repository",
 	Args:  cobra.ExactArgs(1),
-	RunE: func(_ *cobra.Command, args []string) error {
-		return runDiffPattern(args[0])
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runDiffPattern(cmd, args[0])
 	},
 }
 
@@ -157,7 +158,7 @@ func runDiffFile(path string) error {
 	return writeDiffResult(result)
 }
 
-func runDiffPattern(pattern string) error {
+func runDiffPattern(cmd *cobra.Command, pattern string) error {
 	cfg, wsDir, err := loadDiffWorkspace()
 	if err != nil {
 		return err
@@ -169,6 +170,7 @@ func runDiffPattern(pattern string) error {
 	}
 
 	total := 0
+	failed := 0
 	repos := make([]output.RepoResult, 0, len(results))
 	// Keyed by repository for compatibility with earlier report consumers; the
 	// human-readable listing below follows configuration order.
@@ -179,6 +181,7 @@ func runDiffPattern(pattern string) error {
 		switch {
 		case r.Error != "":
 			status = "failed"
+			failed++
 		case len(r.Matches) == 0:
 			status = "no_matches"
 		}
@@ -208,10 +211,14 @@ func runDiffPattern(pattern string) error {
 				fmt.Printf("  %s:%d: %s\n", m.File, m.Line, strings.TrimSpace(m.Content))
 			}
 		}
-		return nil
+	} else if err := writeDiffResult(result); err != nil {
+		return err
 	}
 
-	return writeDiffResult(result)
+	if failed > 0 {
+		return exitcode.Failed(cmd)
+	}
+	return nil
 }
 
 func runDiffHistory(query string) error {

@@ -124,7 +124,9 @@ All four must pass before merging.
 
 ### Config (repos.yaml)
 
-The config is loaded via `internal/config.Load(path)` and saved via `config.Save(path, cfg)`.
+The config is loaded via `internal/config.Load(path)` and saved via `config.Save(path, cfg)`. In `cmd/`, use `config.LoadCommand(cmd)` / `config.CommandPath(cmd)` rather than reading the `--config` flag by hand.
+
+A loaded config records its own path (`Config.Path`). `workspace` and `worktrees` are resolved relative to that file's directory through `Config.Root()`, `WorkspaceDir()` and `WorktreesDir()`; commands must go through these rather than `filepath.Abs(cfg.Workspace)`, so `xr --config other/repos.yaml ...` behaves the same from any working directory.
 
 Top-level keys:
 - `workspace` — directory holding the repositories (default `./repos`)
@@ -165,6 +167,10 @@ When adding/changing commands that prompt users, provide explicit non-interactiv
 - `xr worktree remove` / `prune --gone`: `--yes` confirms. Note `--force` here keeps git's meaning (discard uncommitted changes), unlike `xr repo remove --force`.
 - `xr init`: interactive only; `--non-interactive` returns an error (use `xr repo sync --clone-missing`).
 - `xr exec`: never prompts. It runs the command directly (no shell), skips repositories missing from the workspace, and exits non-zero via `internal/exitcode` when the command failed anywhere. `--jobs` uses `internal/parallel` to buffer per-repository output and flush it in configuration order.
+
+### Exit status
+
+A command that prints per-repository results must exit non-zero when any repository failed, so callers can gate on the exit status without parsing output. Return `exitcode.Failed(cmd)` after printing the summary: it silences cobra's error and usage output and exits with status 1. Repositories missing from the workspace are skipped, not failed. This applies to `repo sync`, `exec`, `worktree add` / `remove` / `prune`, `search` and `diff pattern`; `repo list --json` reports a missing repository as `status: missing` and a broken one as `failed`, but lists always exit 0.
 
 ### JSON/report output conventions
 

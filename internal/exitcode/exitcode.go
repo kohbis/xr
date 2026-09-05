@@ -11,6 +11,8 @@ package exitcode
 import (
 	"errors"
 	"fmt"
+
+	"github.com/spf13/cobra"
 )
 
 // Error is an error that carries an exit status and no user-facing message.
@@ -36,4 +38,14 @@ func From(err error) (int, bool) {
 		return e.Code, true
 	}
 	return 0, false
+}
+
+// Failed is the usual way a command reports that some repositories failed
+// after printing its own per-repository summary: it silences cobra's error and
+// usage output on cmd and returns an error that exits the process with
+// status 1.
+func Failed(cmd *cobra.Command) error {
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	return Silent(1)
 }

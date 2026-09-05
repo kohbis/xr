@@ -116,6 +116,8 @@ Preview without side effects uses `--dry-run` on both commands:
 ### Config path: `xr init` vs other commands
 
 - Most commands: global `--config` (default: `./repos.yaml` in the current directory).
+  The `workspace` and `worktrees` directories in the file are resolved relative to the
+  file itself, so every command behaves the same from any working directory.
 - **`xr init` only**: `-f` / `--file` selects the repos.yaml to create or read during setup. Prefer this flag for init rather than combining it with `--config`.
 
 ### Automation (CI / agents)
@@ -153,7 +155,11 @@ xr repo sync --clone-missing --dry-run    # preview what would be materialized
 ```
 
 `xr repo sync` exits non-zero when any repository fails, so a failed clone or
-fetch stops a CI pipeline. Skipped repositories are not failures. Add `--json`
+fetch stops a CI pipeline. Skipped repositories are not failures. The same rule
+holds for every command that reports per-repository results: `xr exec`,
+`xr worktree add` / `remove` / `prune`, `xr search` and `xr diff pattern` exit
+non-zero when a repository failed, and skip repositories missing from the
+workspace. Add `--json`
 to get per-repository status, skip reason or error, and the steps taken instead
 of progress output, or `--report sync.json` to write that document to a file
 while keeping the terminal output.
@@ -235,7 +241,7 @@ xr --config /path/to/workspace-b/repos.yaml repo sync --update
 
 | Flag | Description |
 |------|-------------|
-| `--config` | Path to config file (default: `repos.yaml` in current directory) |
+| `--config` | Path to config file (default: `repos.yaml` in current directory); paths inside it resolve relative to the file |
 | `--no-color` | Disable ANSI colors (useful for logs and parsers) |
 | `--non-interactive` | Disable prompts; commands fail instead of waiting for input |
 | `--yes` | Confirm destructive or write actions without prompting |

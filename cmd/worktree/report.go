@@ -1,8 +1,10 @@
 package worktree
 
 import (
+	"github.com/kohbis/xr/internal/exitcode"
 	"github.com/kohbis/xr/internal/output"
 	wt "github.com/kohbis/xr/internal/worktree"
+	"github.com/spf13/cobra"
 )
 
 func printOutcomes(result *wt.Result) {
@@ -67,16 +69,23 @@ func jsonResult(command string, result *wt.Result) output.CommandResult {
 	}
 }
 
-// reportResult prints a result in the requested format. Per-repository failures
-// are reported in the summary rather than as a command error, matching
-// 'xr repo sync'; automation should read summary.failed from --json output.
-func reportResult(command string, result *wt.Result, asJSON bool) error {
+// reportResult prints a result in the requested format. Per-repository
+// failures are reported in the output rather than as a command error, matching
+// 'xr repo sync', and like it the command then exits non-zero so the exit
+// status alone can gate a pipeline.
+func reportResult(cmd *cobra.Command, command string, result *wt.Result, asJSON bool) error {
 	changed, skipped, failed := result.Counts()
 	if asJSON {
-		return output.PrintJSON(jsonResult(command, result))
+		if err := output.PrintJSON(jsonResult(command, result)); err != nil {
+			return err
+		}
+	} else {
+		printOutcomes(result)
+		output.PrintActionSummary(changedLabel(command), changed, skipped, failed)
 	}
-	printOutcomes(result)
-	output.PrintActionSummary(changedLabel(command), changed, skipped, failed)
+	if failed > 0 {
+		return exitcode.Failed(cmd)
+	}
 	return nil
 }
 
