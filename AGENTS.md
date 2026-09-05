@@ -27,7 +27,8 @@ xr/
 │   ├── structure/           # Directory tree analysis and display
 │   ├── output/              # Human/JSON output helpers and result models
 │   ├── exitcode/            # Silent exit-status errors for self-reporting commands
-│   └── diff/                # File comparison and git history search
+│   ├── diff/                # File comparison and git history search
+│   └── shellcomp/           # Shared repository-name shell completion
 ├── go.mod                   # Module: github.com/kohbis/xr, Go 1.25.7
 ├── Makefile                 # Build, test, lint, release targets
 ├── .golangci.yml            # Linter configuration
@@ -95,7 +96,7 @@ All four must pass before merging.
 ### Package boundaries
 
 - `cmd/` contains only CLI wiring (flags, args, output). Business logic belongs in `internal/`.
-- `internal/` packages are independent and do not import each other, except `config` which is a shared dependency.
+- `internal/` packages are independent and do not import each other, except for the shared ones: `config` and `git` may be imported anywhere (git wraps the git binary, so nothing else shells out to it directly), and `output` / `parallel` are imported by the packages that render long-running progress (`runner`, `workspace`) — not as a general utility grab-bag.
 - New commands go in `cmd/`; new logic goes in `internal/`.
 - For git interactions in internal packages, prefer `internal/git` helpers over direct `exec.Command("git", ...)`.
 
@@ -208,9 +209,10 @@ so a pull request description does not need to repeat it.
 
 ## Dependencies
 
-Minimal by design. Only two direct dependencies:
+Minimal by design. Three direct dependencies:
 - `github.com/spf13/cobra` — CLI framework
 - `gopkg.in/yaml.v3` — YAML parsing
+- `github.com/manifoldco/promptui` — TTY select/input prompts, used only by `internal/interactive` (`xr init`, `xr repo remove`, `xr repo import`, `xr worktree add/remove`)
 
 Do not add new dependencies without strong justification. Prefer standard library.
 
