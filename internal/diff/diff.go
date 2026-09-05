@@ -13,6 +13,7 @@ import (
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/git"
+	"github.com/kohbis/xr/internal/parallel"
 )
 
 type FileComparison struct {
@@ -56,10 +57,16 @@ type GitDiffResult struct {
 	Error string `json:"error,omitempty"`
 }
 
-func CompareFile(cfg *config.Config, wsDir, fileName string, repoFilter []string) ([]FileComparison, error) {
-	var comparisons []FileComparison
-	var repoFiles []RepoFile
+// repoTarget is one repository a scan covers.
+type repoTarget struct {
+	name string
+	path string
+}
 
+// repoTargets returns the repositories to scan in configuration order, applying
+// the filter and leaving out the ones missing from the workspace.
+func repoTargets(cfg *config.Config, wsDir string, repoFilter []string) []repoTarget {
+	var targets []repoTarget
 	for _, repo := range cfg.Repositories {
 		if !repoMatchesFilter(repoFilter, repo.Name) {
 			continue
@@ -68,32 +75,56 @@ func CompareFile(cfg *config.Config, wsDir, fileName string, repoFilter []string
 		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
 			continue
 		}
+		targets = append(targets, repoTarget{name: repo.Name, path: repoPath})
+	}
+	return targets
+}
 
+// scanRepos runs fn for each target with at most jobs workers and returns the
+// values in configuration order, so concurrency never reorders results.
+func scanRepos[T any](targets []repoTarget, jobs int, fn func(repoTarget) T) []T {
+	return parallel.Results(len(targets), jobs, func(i int) T {
+		return fn(targets[i])
+	})
+}
+
+func CompareFile(cfg *config.Config, wsDir, fileName string, repoFilter []string, jobs int) ([]FileComparison, error) {
+	targets := repoTargets(cfg, wsDir, repoFilter)
+
+	perRepo := scanRepos(targets, jobs, func(t repoTarget) []RepoFile {
 		var found []string
-		err := walkFiles(repoPath, walkOptions{}, func(rel, abs string) error {
+		err := walkFiles(t.path, walkOptions{}, func(rel, abs string) error {
 			if path.Base(rel) == fileName {
 				found = append(found, abs)
 			}
 			return nil
 		})
 		if err != nil {
-			continue
+			return nil
 		}
 
+		var files []RepoFile
 		for _, f := range found {
 			content, err := os.ReadFile(f)
 			if err != nil {
 				continue
 			}
-			relPath := strings.TrimPrefix(f, repoPath+"/")
-			repoFiles = append(repoFiles, RepoFile{
-				Repo:    repo.Name,
+			relPath := strings.TrimPrefix(f, t.path+"/")
+			files = append(files, RepoFile{
+				Repo:    t.name,
 				Path:    relPath,
 				Content: string(content),
 			})
 		}
+		return files
+	})
+
+	var repoFiles []RepoFile
+	for _, files := range perRepo {
+		repoFiles = append(repoFiles, files...)
 	}
 
+	var comparisons []FileComparison
 	if len(repoFiles) >= 2 {
 		comparisons = append(comparisons, FileComparison{
 			FileName: fileName,
@@ -107,24 +138,17 @@ func CompareFile(cfg *config.Config, wsDir, fileName string, repoFilter []string
 // SearchPattern reports where pattern occurs in each repository, in the order
 // the repositories are configured. Repositories missing from the workspace are
 // left out; a repository that could not be scanned is reported with Error set.
-func SearchPattern(cfg *config.Config, wsDir, pattern string, repoFilter []string) ([]PatternResult, error) {
+func SearchPattern(cfg *config.Config, wsDir, pattern string, repoFilter []string, jobs int) ([]PatternResult, error) {
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil, fmt.Errorf("invalid pattern: %w", err)
 	}
 
-	var results []PatternResult
-	for _, repo := range cfg.Repositories {
-		if !repoMatchesFilter(repoFilter, repo.Name) {
-			continue
-		}
-		repoPath := filepath.Join(wsDir, repo.Path)
-		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-			continue
-		}
+	targets := repoTargets(cfg, wsDir, repoFilter)
 
-		result := PatternResult{Repo: repo.Name, Matches: []PatternOccurrence{}}
-		err := walkFiles(repoPath, walkOptions{skipHidden: true}, func(rel, abs string) error {
+	results := scanRepos(targets, jobs, func(t repoTarget) PatternResult {
+		result := PatternResult{Repo: t.name, Matches: []PatternOccurrence{}}
+		err := walkFiles(t.path, walkOptions{skipHidden: true}, func(rel, abs string) error {
 			f, err := os.Open(abs)
 			if err != nil {
 				return nil
@@ -138,7 +162,7 @@ func SearchPattern(cfg *config.Config, wsDir, pattern string, repoFilter []strin
 				line := scanner.Text()
 				if re.MatchString(line) {
 					result.Matches = append(result.Matches, PatternOccurrence{
-						Repo:    repo.Name,
+						Repo:    t.name,
 						File:    rel,
 						Line:    lineNum,
 						Content: line,
@@ -150,8 +174,8 @@ func SearchPattern(cfg *config.Config, wsDir, pattern string, repoFilter []strin
 		if err != nil {
 			result.Error = err.Error()
 		}
-		results = append(results, result)
-	}
+		return result
+	})
 
 	return results, nil
 }
@@ -168,26 +192,17 @@ func repoMatchesFilter(filter []string, name string) bool {
 	return false
 }
 
-func SearchHistoryResults(cfg *config.Config, wsDir, query string, repoFilter []string) ([]HistoryResult, error) {
-	var results []HistoryResult
-	for _, repo := range cfg.Repositories {
-		if !repoMatchesFilter(repoFilter, repo.Name) {
-			continue
-		}
+func SearchHistoryResults(cfg *config.Config, wsDir, query string, repoFilter []string, jobs int) ([]HistoryResult, error) {
+	targets := repoTargets(cfg, wsDir, repoFilter)
 
-		repoPath := filepath.Join(wsDir, repo.Path)
-		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-			continue
-		}
-
-		out, err := git.RunOutput(repoPath, "log", "--all", "--oneline", "--grep="+query)
+	results := scanRepos(targets, jobs, func(t repoTarget) HistoryResult {
+		out, err := git.RunOutput(t.path, "log", "--all", "--oneline", "--grep="+query)
 		if err != nil {
-			results = append(results, HistoryResult{
-				Repo:  repo.Name,
+			return HistoryResult{
+				Repo:  t.name,
 				Lines: []string{},
 				Error: fmt.Sprintf("git log: %v", err),
-			})
-			continue
+			}
 		}
 		lines := []string{}
 		if len(out) > 0 {
@@ -197,8 +212,9 @@ func SearchHistoryResults(cfg *config.Config, wsDir, query string, repoFilter []
 				}
 			}
 		}
-		results = append(results, HistoryResult{Repo: repo.Name, Lines: lines})
-	}
+		return HistoryResult{Repo: t.name, Lines: lines}
+	})
+
 	return results, nil
 }
 
@@ -206,22 +222,13 @@ func SearchHistoryResults(cfg *config.Config, wsDir, query string, repoFilter []
 // args to git diff, and returns the output per repository in configuration
 // order. Use an empty repoFilter to include all configured repos that exist on
 // disk. git's exit status 1 (differences found) is not an error.
-func GitDiff(cfg *config.Config, wsDir string, repoFilter []string, gitArgs []string) []GitDiffResult {
+func GitDiff(cfg *config.Config, wsDir string, repoFilter []string, gitArgs []string, jobs int) []GitDiffResult {
 	gitCmd := append([]string{"-c", "core.pager=cat", "diff"}, gitArgs...)
+	targets := repoTargets(cfg, wsDir, repoFilter)
 
-	var results []GitDiffResult
-	for _, repo := range cfg.Repositories {
-		if !repoMatchesFilter(repoFilter, repo.Name) {
-			continue
-		}
-
-		repoPath := filepath.Join(wsDir, repo.Path)
-		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-			continue
-		}
-
-		result := GitDiffResult{Repo: repo.Name}
-		out, err := git.RunCombinedOutput(repoPath, gitCmd...)
+	return scanRepos(targets, jobs, func(t repoTarget) GitDiffResult {
+		result := GitDiffResult{Repo: t.name}
+		out, err := git.RunCombinedOutput(t.path, gitCmd...)
 		result.Output = string(out)
 		if err != nil {
 			var exitErr *exec.ExitError
@@ -229,9 +236,8 @@ func GitDiff(cfg *config.Config, wsDir string, repoFilter []string, gitArgs []st
 				result.Error = fmt.Sprintf("git diff: %v", err)
 			}
 		}
-		results = append(results, result)
-	}
-	return results
+		return result
+	})
 }
 
 func DiffFiles(file1, file2 RepoFile) (string, error) {

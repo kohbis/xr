@@ -33,7 +33,7 @@ func TestSearchPattern_MatchesAcrossRepos(t *testing.T) {
 		},
 	}
 
-	result, err := SearchPattern(cfg, reposDir, "version", nil)
+	result, err := SearchPattern(cfg, reposDir, "version", nil, 1)
 	if err != nil {
 		t.Fatalf("SearchPattern() error = %v", err)
 	}
@@ -71,7 +71,7 @@ func TestSearchPattern_KeepsConfigurationOrder(t *testing.T) {
 	cfg := &config.Config{Workspace: "./repos", Repositories: repos}
 
 	for range 5 {
-		result, err := SearchPattern(cfg, reposDir, "needle", nil)
+		result, err := SearchPattern(cfg, reposDir, "needle", nil, 1)
 		if err != nil {
 			t.Fatalf("SearchPattern() error = %v", err)
 		}
@@ -118,7 +118,7 @@ func TestSearchPattern_SkipsGitDirAndIgnoredFiles(t *testing.T) {
 		Repositories: []config.Repository{{Name: "proj", Path: "proj", Type: config.RepoTypeClone}},
 	}
 
-	result, err := SearchPattern(cfg, reposDir, "needle", nil)
+	result, err := SearchPattern(cfg, reposDir, "needle", nil, 1)
 	if err != nil {
 		t.Fatalf("SearchPattern() error = %v", err)
 	}
@@ -129,7 +129,7 @@ func TestSearchPattern_SkipsGitDirAndIgnoredFiles(t *testing.T) {
 		t.Errorf("matches = %+v, want only main.go", result[0].Matches)
 	}
 
-	comparisons, err := CompareFile(cfg, reposDir, "out.txt", nil)
+	comparisons, err := CompareFile(cfg, reposDir, "out.txt", nil, 1)
 	if err != nil {
 		t.Fatalf("CompareFile() error = %v", err)
 	}
@@ -144,7 +144,7 @@ func TestSearchPattern_InvalidRegex(t *testing.T) {
 		Repositories: []config.Repository{},
 	}
 
-	_, err := SearchPattern(cfg, "/tmp", "[invalid", nil)
+	_, err := SearchPattern(cfg, "/tmp", "[invalid", nil, 1)
 	if err == nil {
 		t.Fatal("SearchPattern() expected error for invalid regex, got nil")
 	}
@@ -171,7 +171,7 @@ func TestSearchPattern_SkipsHiddenFiles(t *testing.T) {
 		},
 	}
 
-	result, err := SearchPattern(cfg, reposDir, "secret", nil)
+	result, err := SearchPattern(cfg, reposDir, "secret", nil, 1)
 	if err != nil {
 		t.Fatalf("SearchPattern() error = %v", err)
 	}
@@ -189,7 +189,7 @@ func TestSearchPattern_SkipsMissingRepo(t *testing.T) {
 		},
 	}
 
-	result, err := SearchPattern(cfg, "/tmp/nonexistent-ws", "anything", nil)
+	result, err := SearchPattern(cfg, "/tmp/nonexistent-ws", "anything", nil, 1)
 	if err != nil {
 		t.Fatalf("SearchPattern() error = %v", err)
 	}
@@ -222,7 +222,7 @@ func TestCompareFile_TwoReposWithSameFile(t *testing.T) {
 		},
 	}
 
-	comparisons, err := CompareFile(cfg, reposDir, "Makefile", nil)
+	comparisons, err := CompareFile(cfg, reposDir, "Makefile", nil, 1)
 	if err != nil {
 		t.Fatalf("CompareFile() error = %v", err)
 	}
@@ -253,7 +253,7 @@ func TestCompareFile_SingleRepoNoComparison(t *testing.T) {
 		},
 	}
 
-	comparisons, err := CompareFile(cfg, reposDir, "file.txt", nil)
+	comparisons, err := CompareFile(cfg, reposDir, "file.txt", nil, 1)
 	if err != nil {
 		t.Fatalf("CompareFile() error = %v", err)
 	}
@@ -286,7 +286,7 @@ func TestCompareFile_NestedFiles(t *testing.T) {
 		},
 	}
 
-	comparisons, err := CompareFile(cfg, reposDir, "app.conf", nil)
+	comparisons, err := CompareFile(cfg, reposDir, "app.conf", nil, 1)
 	if err != nil {
 		t.Fatalf("CompareFile() error = %v", err)
 	}
@@ -317,7 +317,7 @@ func TestCompareFile_FileNotFound(t *testing.T) {
 		},
 	}
 
-	comparisons, err := CompareFile(cfg, reposDir, "nonexistent.txt", nil)
+	comparisons, err := CompareFile(cfg, reposDir, "nonexistent.txt", nil, 1)
 	if err != nil {
 		t.Fatalf("CompareFile() error = %v", err)
 	}
@@ -345,7 +345,7 @@ func TestSearchPattern_RegexMatch(t *testing.T) {
 		},
 	}
 
-	result, err := SearchPattern(cfg, reposDir, `func\s+\w+`, nil)
+	result, err := SearchPattern(cfg, reposDir, `func\s+\w+`, nil, 1)
 	if err != nil {
 		t.Fatalf("SearchPattern() error = %v", err)
 	}
@@ -375,7 +375,7 @@ func TestSearchPattern_LineNumbers(t *testing.T) {
 		},
 	}
 
-	result, err := SearchPattern(cfg, reposDir, "target", nil)
+	result, err := SearchPattern(cfg, reposDir, "target", nil, 1)
 	if err != nil {
 		t.Fatalf("SearchPattern() error = %v", err)
 	}
@@ -469,7 +469,7 @@ func TestGitDiff_RespectsRepoFilter(t *testing.T) {
 		},
 	}
 
-	results := GitDiff(cfg, reposDir, []string{"alpha"}, nil)
+	results := GitDiff(cfg, reposDir, []string{"alpha"}, nil, 1)
 	if len(results) != 1 {
 		t.Fatalf("got %d results, want 1 (beta excluded by filter): %+v", len(results), results)
 	}
@@ -493,7 +493,7 @@ func TestGitDiff_ReportsErrorForNonGitDir(t *testing.T) {
 		Workspace:    "./repos",
 		Repositories: []config.Repository{{Name: "plain", Path: "plain", Type: config.RepoTypeClone}},
 	}
-	results := GitDiff(cfg, reposDir, nil, nil)
+	results := GitDiff(cfg, reposDir, nil, nil, 1)
 	if len(results) != 1 || results[0].Error == "" {
 		t.Fatalf("expected an error result for a non-git directory, got %+v", results)
 	}
@@ -511,7 +511,7 @@ func TestSearchHistoryResults_ReportsErrorForNonGitDir(t *testing.T) {
 		Workspace:    "./repos",
 		Repositories: []config.Repository{{Name: "plain", Path: "plain", Type: config.RepoTypeClone}},
 	}
-	results, err := SearchHistoryResults(cfg, reposDir, "fix", nil)
+	results, err := SearchHistoryResults(cfg, reposDir, "fix", nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -536,5 +536,111 @@ func runGit(t *testing.T, dir string, args ...string) {
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v in %s: %v\n%s", args, dir, err, out)
+	}
+}
+
+// TestJobsDoNotChangeResults is why every mode collects through scanRepos:
+// --jobs is a speed knob, so each mode must return the same values in
+// repos.yaml order whatever order the workers finish in.
+func TestJobsDoNotChangeResults(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not in PATH")
+	}
+	dir := t.TempDir()
+	reposDir := filepath.Join(dir, "repos")
+
+	names := []string{"alpha", "bravo", "charlie", "delta", "echo"}
+	var repos []config.Repository
+	for _, name := range names {
+		repoDir := filepath.Join(reposDir, name)
+		if err := os.MkdirAll(repoDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		content := "version = 1.0\nname = " + name + "\n"
+		if err := os.WriteFile(filepath.Join(repoDir, "config.txt"), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+		initGitRepo(t, repoDir, "fix: in "+name)
+		repos = append(repos, config.Repository{Name: name, Path: name, Type: config.RepoTypeClone})
+	}
+	// A configured repository absent from the workspace stays skipped.
+	repos = append(repos, config.Repository{Name: "missing", Path: "missing", Type: config.RepoTypeClone})
+	cfg := &config.Config{Workspace: "./repos", Repositories: repos}
+
+	modes := map[string]func(jobs int) string{
+		"pattern": func(jobs int) string {
+			results, err := SearchPattern(cfg, reposDir, "version", nil, jobs)
+			if err != nil {
+				t.Fatalf("SearchPattern(jobs=%d) error = %v", jobs, err)
+			}
+			var lines []string
+			for _, r := range results {
+				lines = append(lines, r.Repo+":"+r.Error)
+				for _, m := range r.Matches {
+					lines = append(lines, m.Repo+"/"+m.File+":"+m.Content)
+				}
+			}
+			return strings.Join(lines, "\n")
+		},
+		"file": func(jobs int) string {
+			comparisons, err := CompareFile(cfg, reposDir, "config.txt", nil, jobs)
+			if err != nil {
+				t.Fatalf("CompareFile(jobs=%d) error = %v", jobs, err)
+			}
+			var lines []string
+			for _, c := range comparisons {
+				for _, f := range c.Repos {
+					lines = append(lines, f.Repo+"/"+f.Path)
+				}
+			}
+			return strings.Join(lines, "\n")
+		},
+		"history": func(jobs int) string {
+			results, err := SearchHistoryResults(cfg, reposDir, "fix", nil, jobs)
+			if err != nil {
+				t.Fatalf("SearchHistoryResults(jobs=%d) error = %v", jobs, err)
+			}
+			var lines []string
+			for _, r := range results {
+				lines = append(lines, r.Repo+":"+strings.Join(r.Lines, ","))
+			}
+			return strings.Join(lines, "\n")
+		},
+		"git diff": func(jobs int) string {
+			var lines []string
+			for _, r := range GitDiff(cfg, reposDir, nil, nil, jobs) {
+				lines = append(lines, r.Repo+":"+r.Error)
+			}
+			return strings.Join(lines, "\n")
+		},
+	}
+
+	for name, run := range modes {
+		t.Run(name, func(t *testing.T) {
+			want := run(1)
+			if want == "" {
+				t.Fatal("fixture produced no results")
+			}
+			for _, jobs := range []int{2, 4, 16} {
+				if got := run(jobs); got != want {
+					t.Errorf("jobs=%d =\n%s\nwant:\n%s", jobs, got, want)
+				}
+			}
+		})
+	}
+}
+
+func initGitRepo(t *testing.T, dir, message string) {
+	t.Helper()
+	for _, args := range [][]string{
+		{"init"},
+		{"add", "-A"},
+		{"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", message, "--no-gpg-sign"},
+	} {
+		c := exec.Command("git", args...)
+		c.Dir = dir
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
 	}
 }

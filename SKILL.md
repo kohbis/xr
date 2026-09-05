@@ -174,11 +174,13 @@ xr diff file go.mod            # unified diff of a file across all repos
 xr diff pattern "version"      # show where pattern occurs per-repo
 xr diff history "fix:"         # search git commit messages across repos
 xr diff file go.mod -r a -r b
+xr diff pattern "foo" -j 8      # scan 8 repos concurrently (any diff mode)
 xr diff history "fix:" --json
 xr diff pattern "foo" --report diff-report.json
 ```
 
 `--json` and `--report` work on `xr diff file`, `pattern`, and `history` only (not default git diff).
+`-j` / `--jobs` works on every diff mode; results stay in repos.yaml order whatever it is set to.
 
 **Agent use cases:**
 - Compare dependency files (`go.mod`, `package.json`, `Cargo.toml`) to find version skew (`xr diff file`)

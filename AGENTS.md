@@ -178,6 +178,7 @@ When adding/changing commands that prompt users, provide explicit non-interactiv
 - `xr repo gitignore`: `--yes` adds the entry without prompting; without a prompt available it returns an error rather than leaving `.gitignore` untouched.
 - `xr exec`: never prompts. It runs the command directly (no shell), skips repositories missing from the workspace, and exits non-zero via `internal/exitcode` when the command failed anywhere. `--jobs` uses `internal/parallel` to buffer per-repository output and flush it in configuration order.
 - `xr search`: never prompts. `--jobs`/`-j` searches repositories concurrently through `parallel.Results`; matches and `OnRepoError` calls stay in configuration order, so `-j` changes only the speed.
+- `xr diff`: never prompts. `--jobs`/`-j` applies to every mode (git diff, `file`, `pattern`, `history`); each one collects through `diff.scanRepos`, so results stay in configuration order.
 
 ### Exit status
 
