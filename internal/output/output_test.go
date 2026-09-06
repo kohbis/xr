@@ -158,3 +158,24 @@ func TestPrintMatchSimple_MatchLine(t *testing.T) {
 		t.Error("match content should be trimmed")
 	}
 }
+
+func TestPrintMatchSimple_ContextLine(t *testing.T) {
+	SetColorEnabled(false)
+	t.Cleanup(func() { SetColorEnabled(true) })
+
+	out := captureStdout(t, func() {
+		PrintMatchSimple("repo-b", "lib.go", 6, "  return nil  ", true)
+	})
+
+	// A context line is only useful if it says where it is and what it says.
+	if !strings.Contains(out, "lib.go") {
+		t.Errorf("context line should name the file, got %q", out)
+	}
+	if !strings.Contains(out, "return nil") {
+		t.Errorf("context line should carry its content, got %q", out)
+	}
+	// '-' instead of ':' is what tells a context line apart from a match.
+	if !strings.Contains(out, "lib.go-6-") {
+		t.Errorf("context line should be marked with '-', got %q", out)
+	}
+}

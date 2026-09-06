@@ -82,23 +82,20 @@ func Red(msg string) string {
 }
 
 func PrintMatchSimple(repo, file string, line int, content string, isContext bool) {
+	trimmed := strings.TrimSpace(content)
 	if isContext {
-		fmt.Printf("  %s%s%s/%s:%s%d%s-%s\n",
-			c(colorDim), repo, c(colorReset),
-			c(colorDim), c(colorReset),
-			line,
-			c(colorDim), c(colorReset),
-		)
-		_ = content
-	} else {
-		trimmed := strings.TrimSpace(content)
-		fmt.Printf("%s%s%s/%s%s%s:%s%d%s: %s\n",
-			c(colorGreen), repo, c(colorReset),
-			c(colorBlue), file, c(colorReset),
-			c(colorYellow), line, c(colorReset),
-			trimmed,
-		)
+		// A context line carries the same location as a match, so it is written
+		// in the same columns. It uses '-' where a match uses ':', the way grep
+		// separates the two, and is dimmed so the matches still stand out.
+		fmt.Println(Dim(fmt.Sprintf("%s/%s-%d- %s", repo, file, line, trimmed)))
+		return
 	}
+	fmt.Printf("%s%s%s/%s%s%s:%s%d%s: %s\n",
+		c(colorGreen), repo, c(colorReset),
+		c(colorBlue), file, c(colorReset),
+		c(colorYellow), line, c(colorReset),
+		trimmed,
+	)
 }
 
 // PrintWarning prints a warning to stderr, so it stays out of the stdout a
