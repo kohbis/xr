@@ -34,7 +34,7 @@ Without prompts, repo name(s) are required and --force or --yes is required to c
 		}
 		confirmed := removeForce || interactive.Yes(cmd)
 
-		cfg, err := loadConfig(cmd)
+		cfg, err := config.LoadCommand(cmd)
 		if err != nil {
 			return err
 		}

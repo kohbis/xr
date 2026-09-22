@@ -112,7 +112,7 @@ func composeStatus(flags worktreeFlags, hasHead bool, hasStash bool, upstreamMar
 }
 
 func gitWorktreeState(repoPath string) (worktreeFlags, error) {
-	out, err := runGitOutput(repoPath, "status", "--porcelain")
+	out, err := RunOutput(repoPath, "status", "--porcelain")
 	if err != nil {
 		return worktreeFlags{}, err
 	}

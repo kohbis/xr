@@ -97,11 +97,11 @@ func loadDiffWorkspace() (*config.Config, string, error) {
 	if diffJobs < 1 {
 		return nil, "", fmt.Errorf("--jobs must be at least 1")
 	}
-	cfg, err := loadConfig()
+	cfg, err := config.LoadCommand(rootCmd)
 	if err != nil {
 		return nil, "", err
 	}
-	wsDir, err := resolveWorkspaceDir(cfg)
+	wsDir, err := cfg.WorkspaceDir()
 	if err != nil {
 		return nil, "", err
 	}

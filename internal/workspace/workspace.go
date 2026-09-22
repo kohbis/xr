@@ -613,7 +613,7 @@ func (w *Workspace) syncClone(repo config.Repository, destPath string, opts Sync
 // syncGitRepo performs fetch, checkout, and pull on a git repository directory.
 func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOptions, p *output.SyncPrinter) (bool, error) {
 	currentBranch := gitCurrentBranch(dir)
-	dirty, err := gitIsDirty(dir)
+	dirty, err := git.IsDirty(dir)
 	if err != nil {
 		return false, err
 	}
@@ -690,7 +690,7 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 			args = append(args, "--prune")
 		}
 		p.Action("fetching from origin")
-		if err := runGitQuiet(dir, args...); err != nil {
+		if err := git.RunQuiet(dir, args...); err != nil {
 			return false, fmt.Errorf("fetch: %w", err)
 		}
 	}
@@ -704,13 +704,13 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 			p.OK(fmt.Sprintf("already on %s", repo.Branch))
 		} else {
 			p.Action(fmt.Sprintf("switching %s → %s", currentBranch, repo.Branch))
-			if err := runGitQuiet(dir, "checkout", repo.Branch); err != nil {
+			if err := git.RunQuiet(dir, "checkout", repo.Branch); err != nil {
 				remoteExists, rerr := git.RefExists(dir, "refs/remotes/origin/"+repo.Branch)
 				if rerr != nil {
 					return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
 				}
 				if remoteExists {
-					if err2 := runGitQuiet(dir, "checkout", "-b", repo.Branch, "--track", "origin/"+repo.Branch); err2 != nil {
+					if err2 := git.RunQuiet(dir, "checkout", "-b", repo.Branch, "--track", "origin/"+repo.Branch); err2 != nil {
 						return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
 					}
 				} else if opts.CreateBranchIfMissing {
@@ -721,7 +721,7 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 					if localExists {
 						return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
 					}
-					if err3 := runGitQuiet(dir, "checkout", "-b", repo.Branch); err3 != nil {
+					if err3 := git.RunQuiet(dir, "checkout", "-b", repo.Branch); err3 != nil {
 						return false, fmt.Errorf("create branch %s: %w", repo.Branch, err3)
 					}
 				} else {
@@ -742,7 +742,7 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 			p.Fail("could not determine branch for pull")
 		} else {
 			p.Action(fmt.Sprintf("pulling origin/%s", branch))
-			if err := runGitQuiet(dir, "pull", "origin", branch); err != nil {
+			if err := git.RunQuiet(dir, "pull", "origin", branch); err != nil {
 				return false, fmt.Errorf("pull origin/%s: %w", branch, err)
 			}
 			p.OK("up to date")
@@ -750,14 +750,4 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 	}
 
 	return false, nil
-}
-
-func gitIsDirty(dir string) (bool, error) {
-	return git.IsDirty(dir)
-}
-
-// runGitQuiet runs a git command, suppressing stdout/stderr. On error, returns
-// the combined output trimmed as the error message.
-func runGitQuiet(dir string, args ...string) error {
-	return git.RunQuiet(dir, args...)
 }

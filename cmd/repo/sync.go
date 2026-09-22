@@ -81,7 +81,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	cfg, err := loadConfig(cmd)
+	cfg, err := config.LoadCommand(cmd)
 	if err != nil {
 		return err
 	}
