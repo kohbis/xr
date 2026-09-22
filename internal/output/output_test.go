@@ -179,3 +179,60 @@ func TestPrintMatchSimple_ContextLine(t *testing.T) {
 		t.Errorf("context line should be marked with '-', got %q", out)
 	}
 }
+
+func TestRepoResultFrom(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    string
+		detail    string
+		wantError string
+	}{
+		// Detail is the error only for a failure. On any other status it holds a
+		// skip reason or a progress note, which must not be reported as an error.
+		{name: "failure reports detail as the error", status: StatusFailed, detail: "checkout main: boom", wantError: "checkout main: boom"},
+		{name: "skip reason is not an error", status: "skipped", detail: "dirty; skipped"},
+		{name: "success note is not an error", status: "synced", detail: "already on main"},
+		{name: "failure without detail", status: StatusFailed},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RepoResultFrom("api", tt.status, tt.detail)
+			if got.Name != "api" || got.Status != tt.status {
+				t.Errorf("RepoResultFrom() = %+v, want name api and status %q", got, tt.status)
+			}
+			if got.Error != tt.wantError {
+				t.Errorf("RepoResultFrom() error = %q, want %q", got.Error, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestPrintActionSummary(t *testing.T) {
+	SetColorEnabled(false)
+	defer SetColorEnabled(true)
+
+	tests := []struct {
+		name                     string
+		label                    string
+		changed, skipped, failed int
+		want                     string
+	}{
+		{name: "all three counts", label: "synced", changed: 2, skipped: 1, failed: 3, want: "\nDone: 2 synced, 1 skipped, 3 failed\n"},
+		{name: "label names the changed repos", label: "created", changed: 1, want: "\nDone: 1 created\n"},
+		{name: "zero counts are omitted", label: "synced", failed: 1, want: "\nDone: 1 failed\n"},
+		// A run with nothing to do says so rather than trailing off after "Done:".
+		{name: "nothing to do", label: "synced", want: "\nDone: nothing to do\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out := captureStdout(t, func() {
+				PrintActionSummary(tt.label, tt.changed, tt.skipped, tt.failed)
+			})
+			if out != tt.want {
+				t.Errorf("PrintActionSummary() = %q, want %q", out, tt.want)
+			}
+		})
+	}
+}
