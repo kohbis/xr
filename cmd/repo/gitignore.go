@@ -2,6 +2,7 @@ package repo
 
 import (
 	"fmt"
+	"github.com/kohbis/xr/internal/config"
 
 	"github.com/kohbis/xr/internal/interactive"
 	"github.com/spf13/cobra"
@@ -17,7 +18,7 @@ Prompts for confirmation. Pass --yes to add the entry without prompting; with
 --non-interactive (or no terminal on stdin) and no --yes the command fails
 rather than leaving .gitignore untouched.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig(cmd)
+		cfg, err := config.LoadCommand(cmd)
 		if err != nil {
 			return err
 		}

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/kohbis/xr/internal/config"
 
 	"github.com/kohbis/xr/internal/exitcode"
 	"github.com/kohbis/xr/internal/output"
@@ -43,12 +44,12 @@ Examples:
 			return fmt.Errorf("--jobs must be at least 1")
 		}
 
-		cfg, err := loadConfig()
+		cfg, err := config.LoadCommand(rootCmd)
 		if err != nil {
 			return err
 		}
 
-		wsDir, err := resolveWorkspaceDir(cfg)
+		wsDir, err := cfg.WorkspaceDir()
 		if err != nil {
 			return err
 		}

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/exitcode"
 	"github.com/kohbis/xr/internal/output"
 	"github.com/kohbis/xr/internal/runner"
@@ -40,11 +41,11 @@ Examples:
   xr exec --json -- git status --porcelain`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig()
+		cfg, err := config.LoadCommand(rootCmd)
 		if err != nil {
 			return err
 		}
-		wsDir, err := resolveWorkspaceDir(cfg)
+		wsDir, err := cfg.WorkspaceDir()
 		if err != nil {
 			return err
 		}

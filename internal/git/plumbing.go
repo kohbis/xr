@@ -15,7 +15,7 @@ func gitHasHead(repoPath string) (bool, error) {
 }
 
 func gitCurrentBranch(repoPath string) (string, error) {
-	out, err := runGitOutput(repoPath, "branch", "--show-current")
+	out, err := RunOutput(repoPath, "branch", "--show-current")
 	if err != nil {
 		return "", err
 	}
@@ -61,13 +61,9 @@ func gitUpstreamMark(repoPath string) (string, error) {
 }
 
 func isGitWorktree(repoPath string) (bool, error) {
-	out, err := runGitOutput(repoPath, "rev-parse", "--is-inside-work-tree")
+	out, err := RunOutput(repoPath, "rev-parse", "--is-inside-work-tree")
 	if err != nil {
 		return false, err
 	}
 	return strings.TrimSpace(string(out)) == "true", nil
-}
-
-func runGitOutput(repoPath string, args ...string) ([]byte, error) {
-	return RunOutput(repoPath, args...)
 }

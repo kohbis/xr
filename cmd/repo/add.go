@@ -72,7 +72,7 @@ If a repository with the same name or path already exists, an error is returned.
 			addBranch = promptOptional(reader, "Branch (optional)", "")
 		}
 
-		cfg, err := loadConfig(cmd)
+		cfg, err := config.LoadCommand(cmd)
 		if err != nil {
 			return err
 		}

@@ -22,7 +22,7 @@ func CurrentBranch(repoPath string) (string, error) {
 }
 
 func RemoteURL(repoPath string) (string, error) {
-	out, err := runGitOutput(repoPath, "remote", "get-url", "origin")
+	out, err := RunOutput(repoPath, "remote", "get-url", "origin")
 	if err != nil {
 		return "", err
 	}
@@ -30,7 +30,7 @@ func RemoteURL(repoPath string) (string, error) {
 }
 
 func ShortCommit(repoPath string) (string, error) {
-	out, err := runGitOutput(repoPath, "rev-parse", "--short", "HEAD")
+	out, err := RunOutput(repoPath, "rev-parse", "--short", "HEAD")
 	if err != nil {
 		return "", err
 	}
@@ -53,7 +53,7 @@ func CheckIgnore(repoPath string, path string) (bool, error) {
 // ignored. It is the file set a user would expect a cross-repository scan to
 // cover, since ignored build output and vendored trees are excluded.
 func ListFiles(repoPath string) ([]string, error) {
-	out, err := runGitOutput(repoPath, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
+	out, err := RunOutput(repoPath, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return nil, err
 	}

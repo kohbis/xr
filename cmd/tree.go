@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/kohbis/xr/internal/config"
 	"os"
 	"path/filepath"
 
@@ -23,12 +24,12 @@ var treeCmd = &cobra.Command{
 	Args:              cobra.MaximumNArgs(1),
 	ValidArgsFunction: shellcomp.CompleteRepoNames,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig()
+		cfg, err := config.LoadCommand(rootCmd)
 		if err != nil {
 			return err
 		}
 
-		wsDir, err := resolveWorkspaceDir(cfg)
+		wsDir, err := cfg.WorkspaceDir()
 		if err != nil {
 			return err
 		}

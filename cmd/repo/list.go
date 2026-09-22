@@ -36,7 +36,7 @@ Examples:
   xr repo list -r api -r web
   xr repo list --json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := loadConfig(cmd)
+		cfg, err := config.LoadCommand(cmd)
 		if err != nil {
 			return err
 		}
