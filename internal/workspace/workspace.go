@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/kohbis/xr/internal/config"
@@ -449,13 +448,7 @@ func (r *SyncResult) record(o SyncOutcome) {
 func (w *Workspace) Sync(repoNames []string, opts SyncOptions) (*SyncResult, error) {
 	wsDir := filepath.Join(w.Root, w.Config.Workspace)
 
-	targets := make([]config.Repository, 0, len(w.Config.Repositories))
-	for _, repo := range w.Config.Repositories {
-		if len(repoNames) > 0 && !slices.Contains(repoNames, repo.Name) {
-			continue
-		}
-		targets = append(targets, repo)
-	}
+	targets := w.Config.Select(repoNames)
 
 	outcomes := make([]SyncOutcome, len(targets))
 

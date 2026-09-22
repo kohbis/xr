@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/output"
@@ -69,13 +68,7 @@ func Run(cfg *config.Config, wsDir string, args []string, opts Options) (*Result
 		return nil, errors.New("no command given")
 	}
 
-	targets := make([]config.Repository, 0, len(cfg.Repositories))
-	for _, repo := range cfg.Repositories {
-		if len(opts.RepoFilter) > 0 && !slices.Contains(opts.RepoFilter, repo.Name) {
-			continue
-		}
-		targets = append(targets, repo)
-	}
+	targets := cfg.Select(opts.RepoFilter)
 
 	runs := make([]RepoRun, len(targets))
 	parallel.Run(len(targets), opts.Jobs, os.Stdout, os.Stderr,

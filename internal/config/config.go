@@ -126,6 +126,28 @@ func (c *Config) WorktreesDir() (string, error) {
 	return filepath.Abs(filepath.Join(c.Root(), c.Worktrees))
 }
 
+// Select returns the repositories named in names, in the order they appear in
+// repos.yaml rather than the order the names were given. An empty names slice
+// selects every repository, which is what --repo means when it is omitted, and
+// a name that matches nothing is simply absent from the result — the same way
+// --repo behaves across search, exec, diff and repo list.
+func (c *Config) Select(names []string) []Repository {
+	if len(names) == 0 {
+		return c.Repositories
+	}
+	want := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		want[n] = struct{}{}
+	}
+	selected := make([]Repository, 0, len(names))
+	for _, r := range c.Repositories {
+		if _, ok := want[r.Name]; ok {
+			selected = append(selected, r)
+		}
+	}
+	return selected
+}
+
 func (r *Repository) IsSymlink() bool {
 	return r.Type == RepoTypeSymlink
 }

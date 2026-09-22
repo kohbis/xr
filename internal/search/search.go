@@ -50,11 +50,7 @@ func Search(cfg *config.Config, wsDir string, opts Options) ([]Match, error) {
 	}
 
 	var targets []target
-	for _, repo := range cfg.Repositories {
-		if len(opts.RepoFilter) > 0 && !slices.Contains(opts.RepoFilter, repo.Name) {
-			continue
-		}
-
+	for _, repo := range cfg.Select(opts.RepoFilter) {
 		repoPath := filepath.Join(wsDir, repo.Path)
 		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
 			continue

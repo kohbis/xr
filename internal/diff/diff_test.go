@@ -420,18 +420,6 @@ func TestDiffFiles_DifferentContent(t *testing.T) {
 	}
 }
 
-func TestRepoMatchesFilter(t *testing.T) {
-	if !repoMatchesFilter(nil, "any") {
-		t.Error("empty filter should match any repo")
-	}
-	if !repoMatchesFilter([]string{"a", "b"}, "b") {
-		t.Error("expected b to match filter")
-	}
-	if repoMatchesFilter([]string{"a"}, "c") {
-		t.Error("c should not match filter")
-	}
-}
-
 func TestGitDiff_RespectsRepoFilter(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not in PATH")

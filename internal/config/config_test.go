@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -513,4 +514,39 @@ func sameFile(t *testing.T, a, b string) bool {
 		return false
 	}
 	return os.SameFile(fa, fb)
+}
+
+func TestSelect(t *testing.T) {
+	cfg := &Config{Repositories: []Repository{
+		{Name: "api"}, {Name: "web"}, {Name: "docs"},
+	}}
+
+	names := func(repos []Repository) []string {
+		out := make([]string, 0, len(repos))
+		for _, r := range repos {
+			out = append(out, r.Name)
+		}
+		return out
+	}
+
+	tests := []struct {
+		name  string
+		given []string
+		want  []string
+	}{
+		{"empty selects everything", nil, []string{"api", "web", "docs"}},
+		{"subset", []string{"docs", "api"}, []string{"api", "docs"}},
+		{"unknown name matches nothing", []string{"nope"}, []string{}},
+		{"unknown alongside known", []string{"web", "nope"}, []string{"web"}},
+		{"duplicates are not repeated", []string{"api", "api"}, []string{"api"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := names(cfg.Select(tt.given))
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("Select(%v) = %v, want %v", tt.given, got, tt.want)
+			}
+		})
+	}
 }
