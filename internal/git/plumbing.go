@@ -7,23 +7,11 @@ import (
 )
 
 func gitHasStash(repoPath string) (bool, error) {
-	return gitRefExists(repoPath, "refs/stash")
+	return RefExists(repoPath, "refs/stash")
 }
 
 func gitHasHead(repoPath string) (bool, error) {
-	return gitRefExists(repoPath, "HEAD")
-}
-
-func gitRefExists(repoPath, ref string) (bool, error) {
-	cmd := exec.Command("git", "rev-parse", "--verify", "--quiet", ref)
-	cmd.Dir = repoPath
-	if err := cmd.Run(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
+	return RefExists(repoPath, "HEAD")
 }
 
 func gitCurrentBranch(repoPath string) (string, error) {
