@@ -1341,3 +1341,99 @@ func TestDirtyReason(t *testing.T) {
 		}
 	}
 }
+
+// The working tree is read before the checkout prompt, so a repository git
+// cannot inspect fails before the user is asked about work that will not
+// happen. Pin that ordering from the outside: the prompt dirties the tree, and
+// the sync must still proceed on the state that was read before it.
+func TestSync_ReadsWorkingTreeBeforePrompting(t *testing.T) {
+	ws := syncPromptWorkspace(t, "other", false)
+	ws.Printer = output.NewSyncPrinter(io.Discard, io.Discard)
+	repoDir := filepath.Join(ws.Root, "repos", "api")
+
+	result, err := ws.Sync(nil, SyncOptions{
+		Quiet: true,
+		ConfirmCheckout: func(config.Repository, string, string) (bool, error) {
+			if err := os.WriteFile(filepath.Join(repoDir, "f.txt"), []byte("changed\n"), 0644); err != nil {
+				t.Errorf("dirtying the tree: %v", err)
+			}
+			return true, nil
+		},
+		ConfirmDirty: func(config.Repository, string) (bool, error) {
+			t.Error("dirty gate ran on state written after the checkout prompt")
+			return false, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if result.Synced != 1 {
+		t.Errorf("Synced = %d, want 1", result.Synced)
+	}
+}
+
+// A dry run only reports what would happen, so it must not ask whether to
+// check out, and the flag combination a real run rejects must not error before
+// the preview is produced.
+func TestSync_DryRunSkipsCheckoutPromptAndFetchRequirement(t *testing.T) {
+	tests := []struct {
+		name string
+		opts SyncOptions
+	}{
+		{name: "checkout due", opts: SyncOptions{}},
+		// Outside a dry run this combination is an error, but the check sits
+		// after the preview returns, so a preview still succeeds.
+		{name: "create-branch-if-missing without fetch", opts: SyncOptions{CreateBranchIfMissing: true}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ws := syncPromptWorkspace(t, "other", false)
+			ws.Printer = output.NewSyncPrinter(io.Discard, io.Discard)
+
+			opts := tt.opts
+			opts.DryRun = true
+			opts.Quiet = true
+			opts.ConfirmCheckout = func(config.Repository, string, string) (bool, error) {
+				t.Error("dry run prompted for checkout")
+				return false, nil
+			}
+
+			result, err := ws.Sync(nil, opts)
+			if err != nil {
+				t.Fatalf("Sync() error = %v", err)
+			}
+			if result.Skipped != 1 || result.Failed != 0 {
+				t.Errorf("Sync() = (skipped %d, failed %d), want (1, 0)", result.Skipped, result.Failed)
+			}
+		})
+	}
+}
+
+// The dirty gate, unlike the checkout prompt, is not suppressed in a dry run:
+// a preview of a repository it would refuse to touch still asks. Recorded as
+// it is rather than as it arguably should be — changing it is a behavior
+// change, not a refactor.
+func TestSync_DryRunStillConsultsTheDirtyGate(t *testing.T) {
+	ws := syncPromptWorkspace(t, "other", true)
+	ws.Printer = output.NewSyncPrinter(io.Discard, io.Discard)
+
+	asked := false
+	result, err := ws.Sync(nil, SyncOptions{
+		DryRun: true,
+		Quiet:  true,
+		ConfirmDirty: func(config.Repository, string) (bool, error) {
+			asked = true
+			return false, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if !asked {
+		t.Error("ConfirmDirty not called during a dry run")
+	}
+	if result.Skipped != 1 {
+		t.Errorf("Skipped = %d, want 1", result.Skipped)
+	}
+}
