@@ -38,6 +38,10 @@ type Check struct {
 }
 
 // Report is the outcome of every check, in the order they were run.
+//
+// Warnings are counted apart from Failed on purpose: a workspace that has not
+// been cloned yet, or a missing optional tool, describes a setup that is not
+// finished rather than one that is broken. Only Failed gates the exit status.
 type Report struct {
 	Checks   []Check `json:"checks"`
 	OK       int     `json:"ok"`

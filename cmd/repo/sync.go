@@ -172,7 +172,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if err := output.PrintJSON(syncResultJSON(result, opts.DryRun)); err != nil {
 			return err
 		}
-		return syncExitCode(cmd, result)
+		return exitcode.FailedIf(cmd, result.Failed)
 	}
 
 	if opts.DryRun {
@@ -181,10 +181,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 		if result.Failed > 0 {
 			fmt.Printf("Preview failures: %d\n", result.Failed)
 		}
-		return syncExitCode(cmd, result)
+		return exitcode.FailedIf(cmd, result.Failed)
 	}
 	output.PrintSyncSummary(result.Synced, result.Skipped, result.Failed)
-	return syncExitCode(cmd, result)
+	return exitcode.FailedIf(cmd, result.Failed)
 }
 
 // syncResultJSON renders a sync result in the shared machine-readable shape.
@@ -215,17 +215,6 @@ func syncResultJSON(result *workspace.SyncResult, dryRun bool) output.CommandRes
 			"repos":   outcomes,
 		},
 	}
-}
-
-// syncExitCode makes the process exit non-zero when repositories failed to
-// sync. Per-repository failures are already reported in the summary above, so
-// the error carries no message and cobra's error/usage output is suppressed —
-// only the exit status changes.
-func syncExitCode(cmd *cobra.Command, result *workspace.SyncResult) error {
-	if result.Failed == 0 {
-		return nil
-	}
-	return exitcode.Failed(cmd)
 }
 
 func init() {

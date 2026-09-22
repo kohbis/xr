@@ -86,10 +86,7 @@ func reportResult(cmd *cobra.Command, command string, result *wt.Result, asJSON 
 		printOutcomes(result)
 		output.PrintActionSummary(changedLabel(command), changed, skipped, failed)
 	}
-	if failed > 0 {
-		return exitcode.Failed(cmd)
-	}
-	return nil
+	return exitcode.FailedIf(cmd, failed)
 }
 
 func changedLabel(command string) string {

@@ -67,11 +67,8 @@ Examples:
 			output.PrintActionSummary("ok", result.Ran, result.Missing, result.Failed)
 		}
 
-		if result.Failed > 0 {
-			// Failures are already reported per repository.
-			return exitcode.Failed(cmd)
-		}
-		return nil
+		// Failures are already reported per repository.
+		return exitcode.FailedIf(cmd, result.Failed)
 	},
 }
 

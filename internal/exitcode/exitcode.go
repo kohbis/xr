@@ -49,3 +49,13 @@ func Failed(cmd *cobra.Command) error {
 	cmd.SilenceUsage = true
 	return Silent(1)
 }
+
+// FailedIf is Failed when failed is non-zero and nil otherwise. Commands that
+// count per-repository failures return it directly, so "some repositories
+// failed" is expressed the same way everywhere.
+func FailedIf(cmd *cobra.Command, failed int) error {
+	if failed == 0 {
+		return nil
+	}
+	return Failed(cmd)
+}

@@ -44,15 +44,6 @@ Examples:
 	RunE: runDiffGit,
 }
 
-// diffModeExitCode exits non-zero when git failed in any repository, matching
-// the other per-repository commands.
-func diffModeExitCode(cmd *cobra.Command, failed int) error {
-	if failed == 0 {
-		return nil
-	}
-	return exitcode.Failed(cmd)
-}
-
 var diffFileCmd = &cobra.Command{
 	Use:   "file <path>",
 	Short: "Compare a file path across repositories",
@@ -137,7 +128,7 @@ func runDiffGit(cmd *cobra.Command, args []string) error {
 			output.PrintWarning(fmt.Sprintf("%s: %s", r.Repo, r.Error))
 		}
 	}
-	return diffModeExitCode(cmd, failed)
+	return exitcode.FailedIf(cmd, failed)
 }
 
 func runDiffFile(path string) error {
@@ -240,7 +231,7 @@ func runDiffPattern(cmd *cobra.Command, pattern string) error {
 		return err
 	}
 
-	return diffModeExitCode(cmd, failed)
+	return exitcode.FailedIf(cmd, failed)
 }
 
 func runDiffHistory(cmd *cobra.Command, query string) error {
@@ -283,7 +274,7 @@ func runDiffHistory(cmd *cobra.Command, query string) error {
 				fmt.Println(strings.Join(h.Lines, "\n"))
 			}
 		}
-		return diffModeExitCode(cmd, failed)
+		return exitcode.FailedIf(cmd, failed)
 	}
 
 	result := output.CommandResult{
@@ -295,7 +286,7 @@ func runDiffHistory(cmd *cobra.Command, query string) error {
 	if err := writeDiffResult(result); err != nil {
 		return err
 	}
-	return diffModeExitCode(cmd, failed)
+	return exitcode.FailedIf(cmd, failed)
 }
 
 func init() {
