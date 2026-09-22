@@ -190,23 +190,7 @@ func setupRepo(t *testing.T) (*Manager, config.Repository) {
 	}
 
 	root := t.TempDir()
-	repoDir := filepath.Join(root, "repos", "api")
-	if err := os.MkdirAll(repoDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	cmd := exec.Command("git", "init")
-	cmd.Dir = repoDir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Skipf("git init unavailable: %v\n%s", err, out)
-	}
-	runGit(t, repoDir, "config", "user.email", "xr@test")
-	runGit(t, repoDir, "config", "user.name", "xr")
-	if err := os.WriteFile(filepath.Join(repoDir, "f.txt"), []byte("hello\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	runGit(t, repoDir, "add", "f.txt")
-	runGit(t, repoDir, "commit", "-m", "init", "--no-gpg-sign")
+	initGitRepo(t, filepath.Join(root, "repos", "api"))
 
 	cfg := &config.Config{
 		Workspace: "./repos",
@@ -216,6 +200,26 @@ func setupRepo(t *testing.T) (*Manager, config.Repository) {
 		},
 	}
 	return New(root, cfg), cfg.Repositories[0]
+}
+
+// initGitRepo creates a git repository with one commit at dir.
+func initGitRepo(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "init")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("git init unavailable: %v\n%s", err, out)
+	}
+	runGit(t, dir, "config", "user.email", "xr@test")
+	runGit(t, dir, "config", "user.name", "xr")
+	if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte("hello\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "f.txt")
+	runGit(t, dir, "commit", "-m", "init", "--no-gpg-sign")
 }
 
 func runGit(t *testing.T, dir string, args ...string) {
@@ -409,5 +413,49 @@ func TestPrune(t *testing.T) {
 	}
 	if got := again.Outcomes[0]; got.Status != StatusSkipped {
 		t.Errorf("Prune() with nothing stale outcome = %+v, want status %q", got, StatusSkipped)
+	}
+}
+
+// A repository whose path escapes the worktrees directory must be refused
+// before git creates anything. The branch name here is valid, so validateBranch
+// lets it through and the containment check is what has to catch it.
+func TestAdd_RepoPathEscapesWorktreesDir(t *testing.T) {
+	m, _ := setupRepo(t)
+
+	// repos/../escape is a real repository, so RepoDir resolves and the add
+	// reaches the containment check — but worktrees/../escape is outside the
+	// directory worktrees are allowed to live in.
+	initGitRepo(t, filepath.Join(m.Root, "escape"))
+	repo := config.Repository{Name: "escape", Path: "../escape", Type: config.RepoTypeClone}
+
+	target := m.PathFor(repo, "feat-x")
+	result, err := m.Add("feat-x", []config.Repository{repo}, AddOptions{Create: true})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	if got := result.Outcomes[0]; got.Status != StatusFailed {
+		t.Fatalf("Add() outcome = %+v, want status %q", got, StatusFailed)
+	}
+	if _, err := os.Stat(target); err == nil {
+		t.Errorf("worktree created outside the worktrees directory at %s", target)
+	}
+}
+
+// removeEmptyDirs walks upwards deleting empty directories, so it must stop at
+// the worktrees root rather than continue into an empty directory beside it.
+func TestRemoveEmptyDirs_StopsOutsideRoot(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "worktrees")
+	outside := filepath.Join(base, "outside")
+	for _, dir := range []string{root, outside} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	removeEmptyDirs(root, outside)
+
+	if _, err := os.Stat(outside); err != nil {
+		t.Errorf("removeEmptyDirs removed %s, which is outside the root: %v", outside, err)
 	}
 }
