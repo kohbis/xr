@@ -174,3 +174,16 @@ func TestRun_Concurrency(t *testing.T) {
 		t.Fatalf("peak concurrency = %d, want at most the requested 4", peak.Load())
 	}
 }
+
+func TestValidateJobs(t *testing.T) {
+	for _, jobs := range []int{-1, 0} {
+		if err := ValidateJobs(jobs); err == nil {
+			t.Errorf("ValidateJobs(%d) = nil, want error", jobs)
+		}
+	}
+	for _, jobs := range []int{1, 8} {
+		if err := ValidateJobs(jobs); err != nil {
+			t.Errorf("ValidateJobs(%d) = %v, want nil", jobs, err)
+		}
+	}
+}

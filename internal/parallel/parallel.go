@@ -9,9 +9,20 @@ package parallel
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"sync"
 )
+
+// ValidateJobs rejects a --jobs value that cannot mean anything. Jobs would
+// silently clamp it, which turns a typo into a sequential run rather than an
+// error, so every command carrying the flag checks it before starting work.
+func ValidateJobs(jobs int) error {
+	if jobs < 1 {
+		return errors.New("--jobs must be at least 1")
+	}
+	return nil
+}
 
 // Jobs clamps a requested worker count to the useful range for n items.
 func Jobs(jobs, n int) int {

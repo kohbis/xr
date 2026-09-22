@@ -8,6 +8,7 @@ import (
 	"github.com/kohbis/xr/internal/diff"
 	"github.com/kohbis/xr/internal/exitcode"
 	"github.com/kohbis/xr/internal/output"
+	"github.com/kohbis/xr/internal/parallel"
 	"github.com/kohbis/xr/internal/shellcomp"
 	"github.com/spf13/cobra"
 )
@@ -85,8 +86,8 @@ func registerDiffOutputFlags(cmd *cobra.Command) {
 // loadDiffWorkspace also validates --jobs, since every diff mode goes through
 // it before scanning repositories.
 func loadDiffWorkspace() (*config.Config, string, error) {
-	if diffJobs < 1 {
-		return nil, "", fmt.Errorf("--jobs must be at least 1")
+	if err := parallel.ValidateJobs(diffJobs); err != nil {
+		return nil, "", err
 	}
 	cfg, err := config.LoadCommand(rootCmd)
 	if err != nil {
