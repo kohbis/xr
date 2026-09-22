@@ -143,22 +143,6 @@ func TestList_InvalidPatternIsReportedWithoutWorktrees(t *testing.T) {
 	}
 }
 
-func TestValidateInsideDir(t *testing.T) {
-	if err := validateInsideDir("/ws/worktrees", "/ws/worktrees/api/feat-x"); err != nil {
-		t.Errorf("validateInsideDir() error = %v, want nil", err)
-	}
-	if err := validateInsideDir("/ws/worktrees", "/ws/worktrees"); err == nil {
-		t.Error("validateInsideDir() on root error = nil, want error")
-	}
-	if err := validateInsideDir("/ws/worktrees", "/ws/repos/api"); err == nil {
-		t.Error("validateInsideDir() on outside path error = nil, want error")
-	}
-	// A sibling directory sharing the prefix must not be treated as inside.
-	if err := validateInsideDir("/ws/wt", "/ws/wt-other/api"); err == nil {
-		t.Error("validateInsideDir() on prefix sibling error = nil, want error")
-	}
-}
-
 func TestRemoveEmptyDirs(t *testing.T) {
 	root := t.TempDir()
 	leaf := filepath.Join(root, "api", "feature", "foo")

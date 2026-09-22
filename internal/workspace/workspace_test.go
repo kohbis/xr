@@ -361,29 +361,6 @@ func TestRemoveRejectsEscapingPath(t *testing.T) {
 	}
 }
 
-func TestValidateInsideDir(t *testing.T) {
-	tests := []struct {
-		name    string
-		dir     string
-		dest    string
-		wantErr bool
-	}{
-		{"valid child", "/workspace/repos", "/workspace/repos/my-repo", false},
-		{"parent escape", "/workspace/repos", "/workspace/repos/../../etc", true},
-		{"same dir", "/workspace/repos", "/workspace/repos", true},
-		{"nested child", "/workspace/repos", "/workspace/repos/deep/nested", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validateInsideDir(tt.dir, tt.dest)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("validateInsideDir(%q, %q) error = %v, wantErr %v", tt.dir, tt.dest, err, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestRemoveSymlink(t *testing.T) {
 	dir := t.TempDir()
 	wsDir := filepath.Join(dir, "repos")

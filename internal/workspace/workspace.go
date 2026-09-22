@@ -12,6 +12,7 @@ import (
 	"github.com/kohbis/xr/internal/git"
 	"github.com/kohbis/xr/internal/output"
 	"github.com/kohbis/xr/internal/parallel"
+	"github.com/kohbis/xr/internal/pathsafe"
 )
 
 type Workspace struct {
@@ -214,7 +215,7 @@ func (w *Workspace) Remove(repos []config.Repository) error {
 
 	for _, repo := range repos {
 		destPath := filepath.Join(wsDir, repo.Path)
-		if err := validateInsideDir(wsDir, destPath); err != nil {
+		if err := pathsafe.Inside(wsDir, destPath); err != nil {
 			return fmt.Errorf("unsafe path for %s: %w", repo.Name, err)
 		}
 		var err error
@@ -228,26 +229,6 @@ func (w *Workspace) Remove(repos []config.Repository) error {
 		}
 	}
 
-	return nil
-}
-
-// validateInsideDir ensures destPath is contained within dir.
-func validateInsideDir(dir, destPath string) error {
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		return err
-	}
-	absDest, err := filepath.Abs(destPath)
-	if err != nil {
-		return err
-	}
-	rel, err := filepath.Rel(absDir, absDest)
-	if err != nil {
-		return err
-	}
-	if rel == "." || strings.HasPrefix(rel, "..") {
-		return fmt.Errorf("path %q escapes workspace directory", destPath)
-	}
 	return nil
 }
 

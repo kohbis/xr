@@ -21,6 +21,7 @@ import (
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/git"
+	"github.com/kohbis/xr/internal/pathsafe"
 )
 
 // Manager performs worktree operations across the repositories of a workspace.
@@ -265,7 +266,7 @@ func (m *Manager) addOne(branch string, repo config.Repository, opts AddOptions)
 
 	target := m.PathFor(repo, branch)
 	outcome.Path = target
-	if err := validateInsideDir(m.WorktreesDir(), target); err != nil {
+	if err := pathsafe.Inside(m.WorktreesDir(), target); err != nil {
 		outcome.Status = StatusFailed
 		outcome.Detail = err.Error()
 		return outcome
@@ -489,26 +490,6 @@ func validateBranch(branch string) error {
 	return nil
 }
 
-// validateInsideDir ensures path is contained within dir.
-func validateInsideDir(dir, path string) error {
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		return err
-	}
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return err
-	}
-	rel, err := filepath.Rel(absDir, absPath)
-	if err != nil {
-		return err
-	}
-	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return fmt.Errorf("path %q escapes worktree directory", path)
-	}
-	return nil
-}
-
 // resolvePath makes p absolute and resolves symlinks when the path exists.
 func resolvePath(p string) (string, error) {
 	abs, err := filepath.Abs(p)
@@ -536,7 +517,7 @@ func removeEmptyDirs(root, dir string) {
 		return
 	}
 	for current != absRoot {
-		if err := validateInsideDir(absRoot, current); err != nil {
+		if err := pathsafe.Inside(absRoot, current); err != nil {
 			return
 		}
 		if err := os.Remove(current); err != nil {
