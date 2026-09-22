@@ -62,6 +62,22 @@ func (m *Manager) RepoDir(repo config.Repository) (string, error) {
 	return resolved, nil
 }
 
+// repoDirs maps repository name to backing git directory, leaving out the
+// repositories that are not usable in the workspace. Callers treat an absent
+// name as "not available" rather than as an error, so the reason RepoDir gave
+// is deliberately dropped here.
+func (m *Manager) repoDirs(repos []config.Repository) map[string]string {
+	dirs := make(map[string]string, len(repos))
+	for _, repo := range repos {
+		dir, err := m.RepoDir(repo)
+		if err != nil {
+			continue
+		}
+		dirs[repo.Name] = dir
+	}
+	return dirs
+}
+
 // PathFor returns the worktree directory for repo and branch.
 func (m *Manager) PathFor(repo config.Repository, branch string) string {
 	return filepath.Join(m.WorktreesDir(), repo.Path, filepath.FromSlash(branch))
@@ -354,44 +370,39 @@ func (m *Manager) resolveBranchSource(dir string, repo config.Repository, branch
 // Remove deletes the given worktrees. Unless force is set, git refuses to
 // remove a worktree with uncommitted changes.
 func (m *Manager) Remove(entries []Entry, force, dryRun bool) (*Result, error) {
-	dirByRepo := make(map[string]string, len(m.Config.Repositories))
-	for _, repo := range m.Config.Repositories {
-		dir, err := m.RepoDir(repo)
-		if err != nil {
-			continue
-		}
-		dirByRepo[repo.Name] = dir
-	}
+	dirByRepo := m.repoDirs(m.Config.Repositories)
 
 	result := &Result{}
 	for _, entry := range entries {
-		outcome := Outcome{Repo: entry.Repo, Branch: entry.Branch, Path: entry.Path}
-		dir, ok := dirByRepo[entry.Repo]
-		if !ok {
-			outcome.Status = StatusFailed
-			outcome.Detail = "repository not available in workspace"
-			result.Outcomes = append(result.Outcomes, outcome)
-			continue
-		}
-
-		if dryRun {
-			outcome.Status = StatusPreview
-			result.Outcomes = append(result.Outcomes, outcome)
-			continue
-		}
-
-		if err := git.WorktreeRemove(dir, entry.Path, force); err != nil {
-			outcome.Status = StatusFailed
-			outcome.Detail = err.Error()
-			result.Outcomes = append(result.Outcomes, outcome)
-			continue
-		}
-		removeEmptyDirs(m.WorktreesDir(), filepath.Dir(entry.Path))
-
-		outcome.Status = StatusRemoved
-		result.Outcomes = append(result.Outcomes, outcome)
+		result.Outcomes = append(result.Outcomes, m.removeOne(entry, dirByRepo, force, dryRun))
 	}
 	return result, nil
+}
+
+func (m *Manager) removeOne(entry Entry, dirByRepo map[string]string, force, dryRun bool) Outcome {
+	outcome := Outcome{Repo: entry.Repo, Branch: entry.Branch, Path: entry.Path}
+
+	dir, ok := dirByRepo[entry.Repo]
+	if !ok {
+		outcome.Status = StatusFailed
+		outcome.Detail = "repository not available in workspace"
+		return outcome
+	}
+
+	if dryRun {
+		outcome.Status = StatusPreview
+		return outcome
+	}
+
+	if err := git.WorktreeRemove(dir, entry.Path, force); err != nil {
+		outcome.Status = StatusFailed
+		outcome.Detail = err.Error()
+		return outcome
+	}
+	removeEmptyDirs(m.WorktreesDir(), filepath.Dir(entry.Path))
+
+	outcome.Status = StatusRemoved
+	return outcome
 }
 
 // Prune drops administrative entries for worktrees whose directory has been
@@ -399,36 +410,39 @@ func (m *Manager) Remove(entries []Entry, force, dryRun bool) (*Result, error) {
 func (m *Manager) Prune(repos []config.Repository, dryRun bool) (*Result, error) {
 	result := &Result{}
 	for _, repo := range repos {
-		outcome := Outcome{Repo: repo.Name}
-		dir, err := m.RepoDir(repo)
-		if err != nil {
-			outcome.Status = StatusSkipped
-			outcome.Detail = err.Error()
-			result.Outcomes = append(result.Outcomes, outcome)
-			continue
-		}
-		report, err := git.WorktreePrune(dir, dryRun)
-		if err != nil {
-			outcome.Status = StatusFailed
-			outcome.Detail = err.Error()
-			result.Outcomes = append(result.Outcomes, outcome)
-			continue
-		}
-		if report == "" {
-			outcome.Status = StatusSkipped
-			outcome.Detail = "nothing to prune"
-			result.Outcomes = append(result.Outcomes, outcome)
-			continue
-		}
-		outcome.Detail = fmt.Sprintf("%d stale entry(ies)", len(strings.Split(report, "\n")))
-		if dryRun {
-			outcome.Status = StatusPreview
-		} else {
-			outcome.Status = StatusPruned
-		}
-		result.Outcomes = append(result.Outcomes, outcome)
+		result.Outcomes = append(result.Outcomes, m.pruneOne(repo, dryRun))
 	}
 	return result, nil
+}
+
+func (m *Manager) pruneOne(repo config.Repository, dryRun bool) Outcome {
+	outcome := Outcome{Repo: repo.Name}
+
+	dir, err := m.RepoDir(repo)
+	if err != nil {
+		outcome.Status = StatusSkipped
+		outcome.Detail = err.Error()
+		return outcome
+	}
+
+	report, err := git.WorktreePrune(dir, dryRun)
+	if err != nil {
+		outcome.Status = StatusFailed
+		outcome.Detail = err.Error()
+		return outcome
+	}
+	if report == "" {
+		outcome.Status = StatusSkipped
+		outcome.Detail = "nothing to prune"
+		return outcome
+	}
+
+	outcome.Detail = fmt.Sprintf("%d stale entry(ies)", len(strings.Split(report, "\n")))
+	outcome.Status = StatusPruned
+	if dryRun {
+		outcome.Status = StatusPreview
+	}
+	return outcome
 }
 
 // GoneEntries returns worktrees whose branch tracked a remote branch that no
@@ -441,14 +455,7 @@ func (m *Manager) GoneEntries(repos []config.Repository) ([]Entry, error) {
 		return nil, err
 	}
 
-	dirByRepo := make(map[string]string, len(repos))
-	for _, repo := range repos {
-		dir, err := m.RepoDir(repo)
-		if err != nil {
-			continue
-		}
-		dirByRepo[repo.Name] = dir
-	}
+	dirByRepo := m.repoDirs(repos)
 
 	var gone []Entry
 	for _, entry := range entries {

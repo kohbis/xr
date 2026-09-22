@@ -192,11 +192,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 func syncResultJSON(result *workspace.SyncResult, dryRun bool) output.CommandResult {
 	repos := make([]output.RepoResult, 0, len(result.Repos))
 	for _, r := range result.Repos {
-		rr := output.RepoResult{Name: r.Name, Status: r.Status}
-		if r.Status == workspace.SyncStatusFailed {
-			rr.Error = r.Detail
-		}
-		repos = append(repos, rr)
+		repos = append(repos, output.RepoResultFrom(r.Name, r.Status, r.Detail))
 	}
 	outcomes := result.Repos
 	if outcomes == nil {

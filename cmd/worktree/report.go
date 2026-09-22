@@ -54,11 +54,7 @@ func jsonResult(command string, result *wt.Result) output.CommandResult {
 	}
 	repos := make([]output.RepoResult, 0, len(result.Outcomes))
 	for _, o := range result.Outcomes {
-		repoResult := output.RepoResult{Name: o.Repo, Status: o.Status}
-		if o.Status == wt.StatusFailed {
-			repoResult.Error = o.Detail
-		}
-		repos = append(repos, repoResult)
+		repos = append(repos, output.RepoResultFrom(o.Repo, o.Status, o.Detail))
 	}
 	return output.CommandResult{
 		Command: command,

@@ -100,6 +100,26 @@ func loadDiffWorkspace() (*config.Config, string, error) {
 	return cfg, wsDir, nil
 }
 
+// scanRepoResult classifies one repository of a diff scan from its match count
+// and error. okStatus is the command's own word for "scanned, and it matched":
+// "matched" for pattern, "ok" for history. The two differ only because both
+// are already part of the --json contract.
+func scanRepoResult(repo string, matches int, errMsg, okStatus string) output.RepoResult {
+	status := okStatus
+	switch {
+	case errMsg != "":
+		status = output.StatusFailed
+	case matches == 0:
+		status = "no_matches"
+	}
+	return output.RepoResult{
+		Name:    repo,
+		Status:  status,
+		Error:   errMsg,
+		Metrics: map[string]int{"matches": matches},
+	}
+}
+
 func writeDiffResult(result output.CommandResult) error {
 	if diffReport != "" {
 		if err := output.WriteJSONFile(diffReport, result); err != nil {
@@ -194,15 +214,10 @@ func runDiffPattern(cmd *cobra.Command, pattern string) error {
 	occurrences := make(map[string][]diff.PatternOccurrence, len(results))
 	for _, r := range results {
 		total += len(r.Matches)
-		status := "matched"
-		switch {
-		case r.Error != "":
-			status = "failed"
+		if r.Error != "" {
 			failed++
-		case len(r.Matches) == 0:
-			status = "no_matches"
 		}
-		repos = append(repos, output.RepoResult{Name: r.Repo, Status: status, Error: r.Error, Metrics: map[string]int{"matches": len(r.Matches)}})
+		repos = append(repos, scanRepoResult(r.Repo, len(r.Matches), r.Error, "matched"))
 		occurrences[r.Repo] = r.Matches
 	}
 
@@ -252,15 +267,10 @@ func runDiffHistory(cmd *cobra.Command, query string) error {
 	for _, h := range history {
 		m := len(h.Lines)
 		matches += m
-		status := "ok"
-		switch {
-		case h.Error != "":
-			status = "failed"
+		if h.Error != "" {
 			failed++
-		case m == 0:
-			status = "no_matches"
 		}
-		repos = append(repos, output.RepoResult{Name: h.Repo, Status: status, Error: h.Error, Metrics: map[string]int{"matches": m}})
+		repos = append(repos, scanRepoResult(h.Repo, m, h.Error, "ok"))
 	}
 
 	if !diffJSON && diffReport == "" {
