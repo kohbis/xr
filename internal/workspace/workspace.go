@@ -668,7 +668,8 @@ func confirmSync(repo config.Repository, dir, currentBranch string, needsCheckou
 
 	// Only checkout and pull can lose uncommitted work, so a fetch-only sync
 	// runs on a dirty tree regardless.
-	if !dirty || !(needsCheckout || opts.Pull) || opts.AllowDirty {
+	blocked := dirty && (needsCheckout || opts.Pull) && !opts.AllowDirty
+	if !blocked {
 		return false, nil
 	}
 
