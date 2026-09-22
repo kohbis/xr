@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -725,7 +724,7 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 		} else {
 			p.Action(fmt.Sprintf("switching %s → %s", currentBranch, repo.Branch))
 			if err := runGitQuiet(dir, "checkout", repo.Branch); err != nil {
-				remoteExists, rerr := gitRefExists(dir, "refs/remotes/origin/"+repo.Branch)
+				remoteExists, rerr := git.RefExists(dir, "refs/remotes/origin/"+repo.Branch)
 				if rerr != nil {
 					return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
 				}
@@ -734,7 +733,7 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 						return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
 					}
 				} else if opts.CreateBranchIfMissing {
-					localExists, lerr := gitRefExists(dir, "refs/heads/"+repo.Branch)
+					localExists, lerr := git.RefExists(dir, "refs/heads/"+repo.Branch)
 					if lerr != nil {
 						return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
 					}
@@ -780,16 +779,4 @@ func gitIsDirty(dir string) (bool, error) {
 // the combined output trimmed as the error message.
 func runGitQuiet(dir string, args ...string) error {
 	return git.RunQuiet(dir, args...)
-}
-
-func gitRefExists(dir, ref string) (bool, error) {
-	err := git.Run(dir, "rev-parse", "--verify", "--quiet", ref)
-	if err == nil {
-		return true, nil
-	}
-	// rev-parse returns exit code 1 when ref is missing.
-	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-		return false, nil
-	}
-	return false, err
 }
