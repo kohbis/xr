@@ -183,7 +183,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 		return exitcode.FailedIf(cmd, result.Failed)
 	}
-	output.PrintSyncSummary(result.Synced, result.Skipped, result.Failed)
+	output.PrintActionSummary("synced", result.Synced, result.Skipped, result.Failed)
 	return exitcode.FailedIf(cmd, result.Failed)
 }
 
