@@ -24,7 +24,7 @@ xr/
 │   ├── search/              # Cross-repo search (ripgrep + fallback, one file set)
 │   ├── runner/              # Cross-repo command execution (xr exec)
 │   ├── parallel/            # Ordered concurrent execution shared by --jobs
-│   ├── pathsafe/            # Containment check keeping derived paths inside a directory
+│   ├── pathsafe/            # Lexical check that a derived path stays inside a directory
 │   ├── structure/           # Directory tree analysis and display
 │   ├── output/              # Human/JSON output helpers and result models
 │   ├── exitcode/            # Silent exit-status errors for self-reporting commands
@@ -98,7 +98,7 @@ All four must pass before merging.
 ### Package boundaries
 
 - `cmd/` contains only CLI wiring (flags, args, output). Business logic belongs in `internal/`.
-- `internal/` packages are independent and do not import each other, except for the shared ones: `config`, `git` and `pathsafe` may be imported anywhere (git wraps the git binary, so nothing else shells out to it directly; `pathsafe` holds the one containment check that keeps a derived path inside its directory), and `output` / `parallel` are imported by the packages that render long-running progress (`runner`, `workspace`) — not as a general utility grab-bag.
+- `internal/` packages are independent and do not import each other, except for the shared ones: `config`, `git` and `pathsafe` may be imported anywhere (git wraps the git binary, so nothing else shells out to it directly; `pathsafe` holds the one lexical check that a derived path stays inside its directory), `output` is imported by the packages that render long-running progress (`runner`, `workspace`), and `parallel` by the ones that implement `--jobs` (`diff`, `runner`, `search`, `workspace`) — none of them as a general utility grab-bag.
 - New commands go in `cmd/`; new logic goes in `internal/`.
 - For git interactions in internal packages, prefer `internal/git` helpers over direct `exec.Command("git", ...)`.
 
