@@ -456,3 +456,26 @@ func TestRemoveEmptyDirs_StopsOutsideRoot(t *testing.T) {
 		t.Errorf("removeEmptyDirs removed %s, which is outside the root: %v", outside, err)
 	}
 }
+
+// A symlinked parent must not let a worktree land outside the root.
+func TestAdd_SymlinkedParentEscapesWorktreesDir(t *testing.T) {
+	m, repo := setupRepo(t)
+	outside := t.TempDir()
+	if err := os.MkdirAll(m.WorktreesDir(), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(m.WorktreesDir(), repo.Path)); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := m.Add("feat-x", []config.Repository{repo}, AddOptions{Create: true})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	if got := result.Outcomes[0]; got.Status != StatusFailed {
+		t.Fatalf("Add() outcome = %+v, want status %q", got, StatusFailed)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "feat-x")); err == nil {
+		t.Error("worktree created outside the worktrees directory")
+	}
+}
