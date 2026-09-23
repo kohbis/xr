@@ -28,6 +28,21 @@ type RepoResult struct {
 	Metrics map[string]int `json:"metrics,omitempty"`
 }
 
+// StatusFailed is shared because every --json consumer gates on it. The rest of
+// the vocabulary (synced, created, matched, ...) stays per command.
+const StatusFailed = "failed"
+
+// RepoResultFrom builds a result from a status an internal package already
+// decided. detail is the error only for a failure; otherwise it is a skip
+// reason or a progress note, which do not belong in an "error" field.
+func RepoResultFrom(name, status, detail string) RepoResult {
+	r := RepoResult{Name: name, Status: status}
+	if status == StatusFailed {
+		r.Error = detail
+	}
+	return r
+}
+
 type CommandResult struct {
 	Command string         `json:"command"`
 	Summary map[string]int `json:"summary,omitempty"`
@@ -211,21 +226,6 @@ func PrintActionSummary(changedLabel string, changed, skipped, failed int) {
 	}
 	if len(parts) == 0 {
 		parts = append(parts, "nothing to do")
-	}
-	fmt.Printf("\nDone: %s\n", strings.Join(parts, ", "))
-}
-
-// PrintSyncSummary prints the final summary of a sync operation.
-func PrintSyncSummary(synced, skipped, failed int) {
-	parts := []string{}
-	if synced > 0 {
-		parts = append(parts, fmt.Sprintf("%s%d synced%s", c(colorGreen), synced, c(colorReset)))
-	}
-	if skipped > 0 {
-		parts = append(parts, fmt.Sprintf("%s%d skipped%s", c(colorDim), skipped, c(colorReset)))
-	}
-	if failed > 0 {
-		parts = append(parts, fmt.Sprintf("%s%d failed%s", c(colorRed), failed, c(colorReset)))
 	}
 	fmt.Printf("\nDone: %s\n", strings.Join(parts, ", "))
 }

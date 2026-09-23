@@ -49,3 +49,11 @@ func Failed(cmd *cobra.Command) error {
 	cmd.SilenceUsage = true
 	return Silent(1)
 }
+
+// FailedIf is Failed when failed is non-zero, nil otherwise.
+func FailedIf(cmd *cobra.Command, failed int) error {
+	if failed == 0 {
+		return nil
+	}
+	return Failed(cmd)
+}

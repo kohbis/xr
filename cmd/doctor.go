@@ -47,7 +47,7 @@ Examples:
 			if err := output.PrintJSON(result); err != nil {
 				return err
 			}
-			return doctorExitCode(cmd, report)
+			return exitcode.FailedIf(cmd, report.Failed)
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -66,7 +66,7 @@ Examples:
 		}
 		fmt.Printf("\n%s\n", doctorSummary(report))
 
-		return doctorExitCode(cmd, report)
+		return exitcode.FailedIf(cmd, report.Failed)
 	},
 }
 
@@ -101,16 +101,6 @@ func doctorMark(status string) string {
 	default:
 		return "✓"
 	}
-}
-
-// doctorExitCode makes a broken environment gate a pipeline without parsing the
-// output. Warnings do not fail: they describe a workspace that is not set up
-// yet, which is not an error.
-func doctorExitCode(cmd *cobra.Command, report doctor.Report) error {
-	if report.Failed == 0 {
-		return nil
-	}
-	return exitcode.Failed(cmd)
 }
 
 func init() {

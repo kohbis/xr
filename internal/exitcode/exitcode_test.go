@@ -49,3 +49,21 @@ func TestFailed(t *testing.T) {
 		t.Fatal("Failed() must silence cobra's error and usage output")
 	}
 }
+
+func TestFailedIf(t *testing.T) {
+	cmd := &cobra.Command{Use: "x"}
+	if err := FailedIf(cmd, 0); err != nil {
+		t.Fatalf("FailedIf(cmd, 0) = %v, want nil", err)
+	}
+	if cmd.SilenceErrors || cmd.SilenceUsage {
+		t.Fatal("FailedIf(cmd, 0) must leave cobra's reporting alone")
+	}
+
+	code, ok := From(FailedIf(cmd, 2))
+	if !ok || code != 1 {
+		t.Fatalf("From(FailedIf(cmd, 2)) = (%d,%t), want (1,true)", code, ok)
+	}
+	if !cmd.SilenceErrors || !cmd.SilenceUsage {
+		t.Fatal("FailedIf() with failures must silence cobra's error and usage output")
+	}
+}

@@ -68,10 +68,10 @@ func TestSyncExitCode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := &cobra.Command{Use: "sync"}
-			err := syncExitCode(cmd, &tt.result)
+			err := exitcode.FailedIf(cmd, tt.result.Failed)
 			if !tt.wantExit {
 				if err != nil {
-					t.Fatalf("syncExitCode() = %v, want nil", err)
+					t.Fatalf("FailedIf() = %v, want nil", err)
 				}
 				if cmd.SilenceErrors || cmd.SilenceUsage {
 					t.Error("cobra reporting silenced without a failure")

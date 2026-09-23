@@ -2,6 +2,7 @@ package repo
 
 import (
 	"fmt"
+	"github.com/kohbis/xr/internal/parallel"
 
 	"github.com/spf13/cobra"
 )
@@ -33,8 +34,8 @@ func validateSyncFlags(fetch bool) error {
 	if syncCreateBranchIfMissing && !fetch {
 		return fmt.Errorf("--create-branch-if-missing requires --update")
 	}
-	if syncJobs < 1 {
-		return fmt.Errorf("--jobs must be at least 1")
+	if err := parallel.ValidateJobs(syncJobs); err != nil {
+		return err
 	}
 	return nil
 }

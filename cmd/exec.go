@@ -4,6 +4,7 @@ import (
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/exitcode"
 	"github.com/kohbis/xr/internal/output"
+	"github.com/kohbis/xr/internal/parallel"
 	"github.com/kohbis/xr/internal/runner"
 	"github.com/kohbis/xr/internal/shellcomp"
 	"github.com/spf13/cobra"
@@ -41,6 +42,10 @@ Examples:
   xr exec --json -- git status --porcelain`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := parallel.ValidateJobs(execJobs); err != nil {
+			return err
+		}
+
 		cfg, err := config.LoadCommand(rootCmd)
 		if err != nil {
 			return err
@@ -67,11 +72,8 @@ Examples:
 			output.PrintActionSummary("ok", result.Ran, result.Missing, result.Failed)
 		}
 
-		if result.Failed > 0 {
-			// Failures are already reported per repository.
-			return exitcode.Failed(cmd)
-		}
-		return nil
+		// Failures are already reported per repository.
+		return exitcode.FailedIf(cmd, result.Failed)
 	},
 }
 

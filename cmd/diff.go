@@ -8,6 +8,7 @@ import (
 	"github.com/kohbis/xr/internal/diff"
 	"github.com/kohbis/xr/internal/exitcode"
 	"github.com/kohbis/xr/internal/output"
+	"github.com/kohbis/xr/internal/parallel"
 	"github.com/kohbis/xr/internal/shellcomp"
 	"github.com/spf13/cobra"
 )
@@ -42,15 +43,6 @@ Examples:
   xr diff pattern "version" -r project-a
   xr diff history "fix:" --json`,
 	RunE: runDiffGit,
-}
-
-// diffModeExitCode exits non-zero when git failed in any repository, matching
-// the other per-repository commands.
-func diffModeExitCode(cmd *cobra.Command, failed int) error {
-	if failed == 0 {
-		return nil
-	}
-	return exitcode.Failed(cmd)
 }
 
 var diffFileCmd = &cobra.Command{
@@ -94,8 +86,8 @@ func registerDiffOutputFlags(cmd *cobra.Command) {
 // loadDiffWorkspace also validates --jobs, since every diff mode goes through
 // it before scanning repositories.
 func loadDiffWorkspace() (*config.Config, string, error) {
-	if diffJobs < 1 {
-		return nil, "", fmt.Errorf("--jobs must be at least 1")
+	if err := parallel.ValidateJobs(diffJobs); err != nil {
+		return nil, "", err
 	}
 	cfg, err := config.LoadCommand(rootCmd)
 	if err != nil {
@@ -106,6 +98,25 @@ func loadDiffWorkspace() (*config.Config, string, error) {
 		return nil, "", err
 	}
 	return cfg, wsDir, nil
+}
+
+// scanRepoResult classifies one repository of a diff scan. okStatus is the
+// command's own word for a repository with matches — "matched" for pattern,
+// "ok" for history — which differ only because both are already --json output.
+func scanRepoResult(repo string, matches int, errMsg, okStatus string) output.RepoResult {
+	status := okStatus
+	switch {
+	case errMsg != "":
+		status = output.StatusFailed
+	case matches == 0:
+		status = "no_matches"
+	}
+	return output.RepoResult{
+		Name:    repo,
+		Status:  status,
+		Error:   errMsg,
+		Metrics: map[string]int{"matches": matches},
+	}
 }
 
 func writeDiffResult(result output.CommandResult) error {
@@ -137,7 +148,7 @@ func runDiffGit(cmd *cobra.Command, args []string) error {
 			output.PrintWarning(fmt.Sprintf("%s: %s", r.Repo, r.Error))
 		}
 	}
-	return diffModeExitCode(cmd, failed)
+	return exitcode.FailedIf(cmd, failed)
 }
 
 func runDiffFile(path string) error {
@@ -202,15 +213,10 @@ func runDiffPattern(cmd *cobra.Command, pattern string) error {
 	occurrences := make(map[string][]diff.PatternOccurrence, len(results))
 	for _, r := range results {
 		total += len(r.Matches)
-		status := "matched"
-		switch {
-		case r.Error != "":
-			status = "failed"
+		if r.Error != "" {
 			failed++
-		case len(r.Matches) == 0:
-			status = "no_matches"
 		}
-		repos = append(repos, output.RepoResult{Name: r.Repo, Status: status, Error: r.Error, Metrics: map[string]int{"matches": len(r.Matches)}})
+		repos = append(repos, scanRepoResult(r.Repo, len(r.Matches), r.Error, "matched"))
 		occurrences[r.Repo] = r.Matches
 	}
 
@@ -240,7 +246,7 @@ func runDiffPattern(cmd *cobra.Command, pattern string) error {
 		return err
 	}
 
-	return diffModeExitCode(cmd, failed)
+	return exitcode.FailedIf(cmd, failed)
 }
 
 func runDiffHistory(cmd *cobra.Command, query string) error {
@@ -260,15 +266,10 @@ func runDiffHistory(cmd *cobra.Command, query string) error {
 	for _, h := range history {
 		m := len(h.Lines)
 		matches += m
-		status := "ok"
-		switch {
-		case h.Error != "":
-			status = "failed"
+		if h.Error != "" {
 			failed++
-		case m == 0:
-			status = "no_matches"
 		}
-		repos = append(repos, output.RepoResult{Name: h.Repo, Status: status, Error: h.Error, Metrics: map[string]int{"matches": m}})
+		repos = append(repos, scanRepoResult(h.Repo, m, h.Error, "ok"))
 	}
 
 	if !diffJSON && diffReport == "" {
@@ -283,7 +284,7 @@ func runDiffHistory(cmd *cobra.Command, query string) error {
 				fmt.Println(strings.Join(h.Lines, "\n"))
 			}
 		}
-		return diffModeExitCode(cmd, failed)
+		return exitcode.FailedIf(cmd, failed)
 	}
 
 	result := output.CommandResult{
@@ -295,7 +296,7 @@ func runDiffHistory(cmd *cobra.Command, query string) error {
 	if err := writeDiffResult(result); err != nil {
 		return err
 	}
-	return diffModeExitCode(cmd, failed)
+	return exitcode.FailedIf(cmd, failed)
 }
 
 func init() {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/kohbis/xr/internal/exitcode"
 	"github.com/kohbis/xr/internal/output"
+	"github.com/kohbis/xr/internal/parallel"
 	"github.com/kohbis/xr/internal/search"
 	"github.com/kohbis/xr/internal/shellcomp"
 	"github.com/spf13/cobra"
@@ -40,8 +41,8 @@ Examples:
   xr search --json "pattern"`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if searchJobs < 1 {
-			return fmt.Errorf("--jobs must be at least 1")
+		if err := parallel.ValidateJobs(searchJobs); err != nil {
+			return err
 		}
 
 		cfg, err := config.LoadCommand(rootCmd)
@@ -110,12 +111,12 @@ Examples:
 			if err := output.PrintJSON(result); err != nil {
 				return err
 			}
-			return searchExitCode(cmd, failed)
+			return exitcode.FailedIf(cmd, len(failed))
 		}
 
 		if len(matches) == 0 {
 			fmt.Println("No matches found.")
-			return searchExitCode(cmd, failed)
+			return exitcode.FailedIf(cmd, len(failed))
 		}
 
 		currentRepo := ""
@@ -128,18 +129,8 @@ Examples:
 		}
 
 		fmt.Printf("\n%d match(es) found.\n", countMatches(matches))
-		return searchExitCode(cmd, failed)
+		return exitcode.FailedIf(cmd, len(failed))
 	},
-}
-
-// searchExitCode exits non-zero when a repository could not be searched, so a
-// caller knows the result may be incomplete. Missing repositories are skipped,
-// not failed.
-func searchExitCode(cmd *cobra.Command, failed []output.RepoResult) error {
-	if len(failed) == 0 {
-		return nil
-	}
-	return exitcode.Failed(cmd)
 }
 
 func countMatches(matches []search.Match) int {
