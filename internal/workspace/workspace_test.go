@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -1148,5 +1149,277 @@ func TestAdd_ProgressGoesToInjectedPrinter(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "symlink created") {
 		t.Errorf("injected printer did not receive progress, got %q", buf.String())
+	}
+}
+
+// syncPromptWorkspace builds a workspace with one repository configured for
+// branch, so a sync has a reason to prompt.
+func syncPromptWorkspace(t *testing.T, branch string, dirty bool) *Workspace {
+	t.Helper()
+	root := t.TempDir()
+	repoDir := seedGitRepo(t, filepath.Join(root, "repos", "api"))
+	runGit(t, repoDir, "branch", "other")
+	if dirty {
+		if err := os.WriteFile(filepath.Join(repoDir, "f.txt"), []byte("changed\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := &config.Config{
+		Workspace:    "./repos",
+		Repositories: []config.Repository{{Name: "api", Path: "api", Type: config.RepoTypeClone, Branch: branch}},
+	}
+	return New(root, cfg)
+}
+
+func TestSync_CheckoutPrompt(t *testing.T) {
+	tests := []struct {
+		name        string
+		confirm     func(config.Repository, string, string) (bool, error)
+		wantSkipped int
+		wantSynced  int
+		wantFailed  int
+	}{
+		{
+			name:        "declined skips the repository",
+			confirm:     func(config.Repository, string, string) (bool, error) { return false, nil },
+			wantSkipped: 1,
+		},
+		{
+			name:       "accepted checks the branch out",
+			confirm:    func(config.Repository, string, string) (bool, error) { return true, nil },
+			wantSynced: 1,
+		},
+		{
+			name: "prompt error fails the repository",
+			confirm: func(config.Repository, string, string) (bool, error) {
+				return false, errors.New("no terminal")
+			},
+			wantFailed: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ws := syncPromptWorkspace(t, "other", false)
+			ws.Printer = output.NewSyncPrinter(io.Discard, io.Discard)
+
+			var asked int
+			result, err := ws.Sync(nil, SyncOptions{
+				Quiet: true,
+				ConfirmCheckout: func(r config.Repository, from, to string) (bool, error) {
+					asked++
+					if from != "main" || to != "other" {
+						t.Errorf("ConfirmCheckout(from=%q, to=%q), want main → other", from, to)
+					}
+					return tt.confirm(r, from, to)
+				},
+			})
+			if err != nil {
+				t.Fatalf("Sync() error = %v", err)
+			}
+			if asked != 1 {
+				t.Errorf("ConfirmCheckout called %d times, want 1", asked)
+			}
+			if result.Skipped != tt.wantSkipped || result.Synced != tt.wantSynced || result.Failed != tt.wantFailed {
+				t.Errorf("Sync() = (synced %d, skipped %d, failed %d), want (%d, %d, %d)",
+					result.Synced, result.Skipped, result.Failed,
+					tt.wantSynced, tt.wantSkipped, tt.wantFailed)
+			}
+		})
+	}
+}
+
+func TestSync_DirtyPrompt(t *testing.T) {
+	tests := []struct {
+		name        string
+		allowDirty  bool
+		confirm     func(config.Repository, string) (bool, error)
+		wantAsked   int
+		wantSkipped int
+		wantSynced  int
+	}{
+		{
+			name:        "no prompt available skips",
+			wantSkipped: 1,
+		},
+		{
+			name:        "declined skips",
+			confirm:     func(config.Repository, string) (bool, error) { return false, nil },
+			wantAsked:   1,
+			wantSkipped: 1,
+		},
+		{
+			name:       "accepted proceeds",
+			confirm:    func(config.Repository, string) (bool, error) { return true, nil },
+			wantAsked:  1,
+			wantSynced: 1,
+		},
+		{
+			name:       "allow-dirty does not ask",
+			allowDirty: true,
+			confirm:    func(config.Repository, string) (bool, error) { return false, nil },
+			wantSynced: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// The sync would checkout, which is what makes a dirty tree matter.
+			ws := syncPromptWorkspace(t, "other", true)
+			ws.Printer = output.NewSyncPrinter(io.Discard, io.Discard)
+
+			var asked int
+			var reason string
+			opts := SyncOptions{Quiet: true, AllowDirty: tt.allowDirty}
+			if tt.confirm != nil {
+				opts.ConfirmDirty = func(r config.Repository, why string) (bool, error) {
+					asked++
+					reason = why
+					return tt.confirm(r, why)
+				}
+			}
+
+			result, err := ws.Sync(nil, opts)
+			if err != nil {
+				t.Fatalf("Sync() error = %v", err)
+			}
+			if asked != tt.wantAsked {
+				t.Errorf("ConfirmDirty called %d times, want %d", asked, tt.wantAsked)
+			}
+			if tt.wantAsked > 0 && reason != "dirty working tree (would checkout)" {
+				t.Errorf("ConfirmDirty reason = %q", reason)
+			}
+			if result.Skipped != tt.wantSkipped || result.Synced != tt.wantSynced {
+				t.Errorf("Sync() = (synced %d, skipped %d), want (%d, %d)",
+					result.Synced, result.Skipped, tt.wantSynced, tt.wantSkipped)
+			}
+		})
+	}
+}
+
+// A dirty tree only blocks work that could lose it.
+func TestSync_DirtyWithNothingToDoIsNotBlocked(t *testing.T) {
+	ws := syncPromptWorkspace(t, "main", true)
+	ws.Printer = output.NewSyncPrinter(io.Discard, io.Discard)
+
+	asked := false
+	result, err := ws.Sync(nil, SyncOptions{
+		Quiet:        true,
+		ConfirmDirty: func(config.Repository, string) (bool, error) { asked = true; return false, nil },
+	})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if asked {
+		t.Error("ConfirmDirty called although no checkout or pull was due")
+	}
+	if result.Synced != 1 {
+		t.Errorf("Synced = %d, want 1", result.Synced)
+	}
+}
+
+func TestDirtyReason(t *testing.T) {
+	tests := []struct {
+		checkout, pull bool
+		want           string
+	}{
+		{true, true, "dirty working tree (would checkout and pull)"},
+		{true, false, "dirty working tree (would checkout)"},
+		{false, true, "dirty working tree (would pull)"},
+	}
+	for _, tt := range tests {
+		if got := dirtyReason(tt.checkout, tt.pull); got != tt.want {
+			t.Errorf("dirtyReason(%t, %t) = %q, want %q", tt.checkout, tt.pull, got, tt.want)
+		}
+	}
+}
+
+// Pins the read-before-prompt ordering from outside: the prompt dirties the
+// tree, and the sync must still proceed on the state read before it.
+func TestSync_ReadsWorkingTreeBeforePrompting(t *testing.T) {
+	ws := syncPromptWorkspace(t, "other", false)
+	ws.Printer = output.NewSyncPrinter(io.Discard, io.Discard)
+	repoDir := filepath.Join(ws.Root, "repos", "api")
+
+	result, err := ws.Sync(nil, SyncOptions{
+		Quiet: true,
+		ConfirmCheckout: func(config.Repository, string, string) (bool, error) {
+			if err := os.WriteFile(filepath.Join(repoDir, "f.txt"), []byte("changed\n"), 0644); err != nil {
+				t.Errorf("dirtying the tree: %v", err)
+			}
+			return true, nil
+		},
+		ConfirmDirty: func(config.Repository, string) (bool, error) {
+			t.Error("dirty gate ran on state written after the checkout prompt")
+			return false, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if result.Synced != 1 {
+		t.Errorf("Synced = %d, want 1", result.Synced)
+	}
+}
+
+// A dry run must not ask whether to check out, and the flag combination a real
+// run rejects must not error before the preview.
+func TestSync_DryRunSkipsCheckoutPromptAndFetchRequirement(t *testing.T) {
+	tests := []struct {
+		name string
+		opts SyncOptions
+	}{
+		{name: "checkout due", opts: SyncOptions{}},
+		// The check sits after the preview returns.
+		{name: "create-branch-if-missing without fetch", opts: SyncOptions{CreateBranchIfMissing: true}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ws := syncPromptWorkspace(t, "other", false)
+			ws.Printer = output.NewSyncPrinter(io.Discard, io.Discard)
+
+			opts := tt.opts
+			opts.DryRun = true
+			opts.Quiet = true
+			opts.ConfirmCheckout = func(config.Repository, string, string) (bool, error) {
+				t.Error("dry run prompted for checkout")
+				return false, nil
+			}
+
+			result, err := ws.Sync(nil, opts)
+			if err != nil {
+				t.Fatalf("Sync() error = %v", err)
+			}
+			if result.Skipped != 1 || result.Failed != 0 {
+				t.Errorf("Sync() = (skipped %d, failed %d), want (1, 0)", result.Skipped, result.Failed)
+			}
+		})
+	}
+}
+
+// The dirty gate, unlike the checkout prompt, is not suppressed in a dry run.
+// Odd, but pre-existing: changing it is a behavior change, not a refactor.
+func TestSync_DryRunStillConsultsTheDirtyGate(t *testing.T) {
+	ws := syncPromptWorkspace(t, "other", true)
+	ws.Printer = output.NewSyncPrinter(io.Discard, io.Discard)
+
+	asked := false
+	result, err := ws.Sync(nil, SyncOptions{
+		DryRun: true,
+		Quiet:  true,
+		ConfirmDirty: func(config.Repository, string) (bool, error) {
+			asked = true
+			return false, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if !asked {
+		t.Error("ConfirmDirty not called during a dry run")
+	}
+	if result.Skipped != 1 {
+		t.Errorf("Skipped = %d, want 1", result.Skipped)
 	}
 }

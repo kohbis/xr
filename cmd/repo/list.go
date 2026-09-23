@@ -45,10 +45,7 @@ Examples:
 			return fmt.Errorf("resolving workspace path: %w", err)
 		}
 
-		repos := cfg.Repositories
-		if len(listRepo) > 0 {
-			repos = filterRepos(repos, listRepo)
-		}
+		repos := cfg.Select(listRepo)
 
 		rows := make([]map[string]string, 0, len(repos))
 		result := output.CommandResult{
@@ -99,22 +96,6 @@ func repoListResult(name, repoPath, status string) output.RepoResult {
 		return output.RepoResult{Name: name, Status: "missing", Error: "missing in workspace"}
 	}
 	return output.RepoResult{Name: name, Status: "failed", Error: "repository status unavailable"}
-}
-
-// filterRepos returns the repos whose name is in names, in repos.yaml order.
-// An unknown name matches nothing, the way --repo behaves in search and exec.
-func filterRepos(repos []config.Repository, names []string) []config.Repository {
-	want := make(map[string]struct{}, len(names))
-	for _, n := range names {
-		want[n] = struct{}{}
-	}
-	filtered := make([]config.Repository, 0, len(repos))
-	for _, r := range repos {
-		if _, ok := want[r.Name]; ok {
-			filtered = append(filtered, r)
-		}
-	}
-	return filtered
 }
 
 func repoRuntimeStatus(repoPath string) (currentBranch string, status string) {

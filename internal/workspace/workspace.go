@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/kohbis/xr/internal/config"
@@ -449,13 +448,7 @@ func (r *SyncResult) record(o SyncOutcome) {
 func (w *Workspace) Sync(repoNames []string, opts SyncOptions) (*SyncResult, error) {
 	wsDir := filepath.Join(w.Root, w.Config.Workspace)
 
-	targets := make([]config.Repository, 0, len(w.Config.Repositories))
-	for _, repo := range w.Config.Repositories {
-		if len(repoNames) > 0 && !slices.Contains(repoNames, repo.Name) {
-			continue
-		}
-		targets = append(targets, repo)
-	}
+	targets := w.Config.Select(repoNames)
 
 	outcomes := make([]SyncOutcome, len(targets))
 
@@ -611,15 +604,55 @@ func (w *Workspace) syncClone(repo config.Repository, destPath string, opts Sync
 }
 
 // syncGitRepo performs fetch, checkout, and pull on a git repository directory.
+// It reports whether the repository was skipped: a prompt declined the work, a
+// dirty tree blocked it, or it was a dry run.
 func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOptions, p *output.SyncPrinter) (bool, error) {
 	currentBranch := gitCurrentBranch(dir)
+	needsCheckout := repo.Branch != "" && currentBranch != repo.Branch
+
+	skipped, err := confirmSync(repo, dir, currentBranch, needsCheckout, opts, p)
+	if err != nil || skipped {
+		return skipped, err
+	}
+
+	if opts.DryRun {
+		previewSync(repo, currentBranch, needsCheckout, opts, p)
+		return true, nil
+	}
+
+	if opts.Fetch {
+		if err := fetchOrigin(dir, opts, p); err != nil {
+			return false, err
+		}
+	}
+
+	if repo.Branch != "" {
+		if opts.CreateBranchIfMissing && !opts.Fetch {
+			return false, fmt.Errorf("create-branch-if-missing requires fetch")
+		}
+		if err := switchToBranch(dir, repo, currentBranch, opts, p); err != nil {
+			return false, err
+		}
+	}
+
+	if opts.Pull {
+		if err := pullBranch(dir, repo, p); err != nil {
+			return false, err
+		}
+	}
+
+	return false, nil
+}
+
+// confirmSync applies the two gates that stop a repository before any git
+// command runs: the checkout prompt and a dirty working tree.
+func confirmSync(repo config.Repository, dir, currentBranch string, needsCheckout bool, opts SyncOptions, p *output.SyncPrinter) (bool, error) {
+	// Before prompting, so a repository git cannot inspect fails without first
+	// asking about work that will not happen.
 	dirty, err := git.IsDirty(dir)
 	if err != nil {
 		return false, err
 	}
-
-	needsCheckout := repo.Branch != "" && currentBranch != repo.Branch
-	needsPull := opts.Pull
 
 	if needsCheckout && opts.ConfirmCheckout != nil && !opts.DryRun {
 		ok, err := opts.ConfirmCheckout(repo, currentBranch, repo.Branch)
@@ -632,122 +665,145 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 		}
 	}
 
-	if dirty && (needsCheckout || needsPull) && !opts.AllowDirty {
-		reason := "dirty working tree"
-		if needsCheckout && needsPull {
-			reason += " (would checkout and pull)"
-		} else if needsCheckout {
-			reason += " (would checkout)"
-		} else {
-			reason += " (would pull)"
-		}
-
-		if opts.ConfirmDirty != nil {
-			ok, err := opts.ConfirmDirty(repo, reason)
-			if err != nil {
-				return false, err
-			}
-			if !ok {
-				p.Skip("dirty; skipped")
-				return true, nil
-			}
-		} else {
-			p.Skip("dirty; skipped (use --allow-dirty)")
-			return true, nil
-		}
+	// Only checkout and pull can lose uncommitted work.
+	blocked := dirty && (needsCheckout || opts.Pull) && !opts.AllowDirty
+	if !blocked {
+		return false, nil
 	}
 
-	if opts.DryRun {
-		if opts.Fetch {
-			if opts.Prune {
-				p.Action("preview: would fetch origin --prune")
-			} else {
-				p.Action("preview: would fetch origin")
-			}
-		}
-		if needsCheckout {
-			p.Action(fmt.Sprintf("preview: would checkout %s", repo.Branch))
-		}
-		if opts.Pull {
-			branch := repo.Branch
-			if branch == "" {
-				branch = currentBranch
-			}
-			if branch == "" {
-				p.Fail("preview: could not determine branch for pull")
-			} else {
-				p.Action(fmt.Sprintf("preview: would pull origin/%s", branch))
-			}
-		}
-		p.Skip("preview")
+	if opts.ConfirmDirty == nil {
+		p.Skip("dirty; skipped (use --allow-dirty)")
 		return true, nil
 	}
+	ok, err := opts.ConfirmDirty(repo, dirtyReason(needsCheckout, opts.Pull))
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		p.Skip("dirty; skipped")
+		return true, nil
+	}
+	return false, nil
+}
 
-	// Fetch from remote
+// dirtyReason tells the prompt what is at stake.
+func dirtyReason(needsCheckout, needsPull bool) string {
+	switch {
+	case needsCheckout && needsPull:
+		return "dirty working tree (would checkout and pull)"
+	case needsCheckout:
+		return "dirty working tree (would checkout)"
+	default:
+		return "dirty working tree (would pull)"
+	}
+}
+
+// previewSync reports what a sync would do, without running any of it.
+func previewSync(repo config.Repository, currentBranch string, needsCheckout bool, opts SyncOptions, p *output.SyncPrinter) {
 	if opts.Fetch {
-		args := []string{"fetch", "origin"}
 		if opts.Prune {
-			args = append(args, "--prune")
-		}
-		p.Action("fetching from origin")
-		if err := git.RunQuiet(dir, args...); err != nil {
-			return false, fmt.Errorf("fetch: %w", err)
-		}
-	}
-
-	// Switch to configured branch if specified
-	if repo.Branch != "" {
-		if opts.CreateBranchIfMissing && !opts.Fetch {
-			return false, fmt.Errorf("create-branch-if-missing requires fetch")
-		}
-		if currentBranch == repo.Branch {
-			p.OK(fmt.Sprintf("already on %s", repo.Branch))
+			p.Action("preview: would fetch origin --prune")
 		} else {
-			p.Action(fmt.Sprintf("switching %s → %s", currentBranch, repo.Branch))
-			if err := git.RunQuiet(dir, "checkout", repo.Branch); err != nil {
-				remoteExists, rerr := git.RefExists(dir, "refs/remotes/origin/"+repo.Branch)
-				if rerr != nil {
-					return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
-				}
-				if remoteExists {
-					if err2 := git.RunQuiet(dir, "checkout", "-b", repo.Branch, "--track", "origin/"+repo.Branch); err2 != nil {
-						return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
-					}
-				} else if opts.CreateBranchIfMissing {
-					localExists, lerr := git.RefExists(dir, "refs/heads/"+repo.Branch)
-					if lerr != nil {
-						return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
-					}
-					if localExists {
-						return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
-					}
-					if err3 := git.RunQuiet(dir, "checkout", "-b", repo.Branch); err3 != nil {
-						return false, fmt.Errorf("create branch %s: %w", repo.Branch, err3)
-					}
-				} else {
-					return false, fmt.Errorf("checkout %s: %w", repo.Branch, err)
-				}
-			}
-			p.OK(fmt.Sprintf("switched to %s", repo.Branch))
+			p.Action("preview: would fetch origin")
 		}
 	}
-
-	// Pull latest changes
+	if needsCheckout {
+		p.Action(fmt.Sprintf("preview: would checkout %s", repo.Branch))
+	}
 	if opts.Pull {
 		branch := repo.Branch
 		if branch == "" {
-			branch = gitCurrentBranch(dir)
+			branch = currentBranch
 		}
 		if branch == "" {
-			p.Fail("could not determine branch for pull")
+			p.Fail("preview: could not determine branch for pull")
 		} else {
-			p.Action(fmt.Sprintf("pulling origin/%s", branch))
-			if err := git.RunQuiet(dir, "pull", "origin", branch); err != nil {
-				return false, fmt.Errorf("pull origin/%s: %w", branch, err)
-			}
-			p.OK("up to date")
+			p.Action(fmt.Sprintf("preview: would pull origin/%s", branch))
 		}
 	}
+	p.Skip("preview")
+}
 
-	return false, nil
+func fetchOrigin(dir string, opts SyncOptions, p *output.SyncPrinter) error {
+	args := []string{"fetch", "origin"}
+	if opts.Prune {
+		args = append(args, "--prune")
+	}
+	p.Action("fetching from origin")
+	if err := git.RunQuiet(dir, args...); err != nil {
+		return fmt.Errorf("fetch: %w", err)
+	}
+	return nil
+}
+
+func switchToBranch(dir string, repo config.Repository, currentBranch string, opts SyncOptions, p *output.SyncPrinter) error {
+	if currentBranch == repo.Branch {
+		p.OK(fmt.Sprintf("already on %s", repo.Branch))
+		return nil
+	}
+	p.Action(fmt.Sprintf("switching %s → %s", currentBranch, repo.Branch))
+	if err := checkoutBranch(dir, repo, opts); err != nil {
+		return err
+	}
+	p.OK(fmt.Sprintf("switched to %s", repo.Branch))
+	return nil
+}
+
+// checkoutBranch checks out repo.Branch, falling back to branching off
+// origin/<branch> and, with CreateBranchIfMissing, off HEAD.
+//
+// A fallback that does not work out reports the original checkout failure, not
+// its own: that first error says why the branch would not check out, and the
+// rest are attempts to recover from it.
+func checkoutBranch(dir string, repo config.Repository, opts SyncOptions) error {
+	err := git.RunQuiet(dir, "checkout", repo.Branch)
+	if err == nil {
+		return nil
+	}
+	checkoutFailed := fmt.Errorf("checkout %s: %w", repo.Branch, err)
+
+	remoteExists, rerr := git.RefExists(dir, "refs/remotes/origin/"+repo.Branch)
+	if rerr != nil {
+		return checkoutFailed
+	}
+	if remoteExists {
+		if err := git.RunQuiet(dir, "checkout", "-b", repo.Branch, "--track", "origin/"+repo.Branch); err != nil {
+			return checkoutFailed
+		}
+		return nil
+	}
+
+	if !opts.CreateBranchIfMissing {
+		return checkoutFailed
+	}
+	// --create-branch-if-missing is for a missing branch, so a local one that
+	// exists yet refused to check out must not be papered over.
+	localExists, lerr := git.RefExists(dir, "refs/heads/"+repo.Branch)
+	if lerr != nil || localExists {
+		return checkoutFailed
+	}
+	if err := git.RunQuiet(dir, "checkout", "-b", repo.Branch); err != nil {
+		return fmt.Errorf("create branch %s: %w", repo.Branch, err)
+	}
+	return nil
+}
+
+// pullBranch pulls the configured branch, or the checked-out one when
+// repos.yaml names none. An undeterminable branch is a failed step, not a
+// failed sync.
+func pullBranch(dir string, repo config.Repository, p *output.SyncPrinter) error {
+	branch := repo.Branch
+	if branch == "" {
+		branch = gitCurrentBranch(dir)
+	}
+	if branch == "" {
+		p.Fail("could not determine branch for pull")
+		return nil
+	}
+	p.Action(fmt.Sprintf("pulling origin/%s", branch))
+	if err := git.RunQuiet(dir, "pull", "origin", branch); err != nil {
+		return fmt.Errorf("pull origin/%s: %w", branch, err)
+	}
+	p.OK("up to date")
+	return nil
 }

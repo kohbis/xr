@@ -67,10 +67,7 @@ type repoTarget struct {
 // the filter and leaving out the ones missing from the workspace.
 func repoTargets(cfg *config.Config, wsDir string, repoFilter []string) []repoTarget {
 	var targets []repoTarget
-	for _, repo := range cfg.Repositories {
-		if !repoMatchesFilter(repoFilter, repo.Name) {
-			continue
-		}
+	for _, repo := range cfg.Select(repoFilter) {
 		repoPath := filepath.Join(wsDir, repo.Path)
 		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
 			continue
@@ -178,18 +175,6 @@ func SearchPattern(cfg *config.Config, wsDir, pattern string, repoFilter []strin
 	})
 
 	return results, nil
-}
-
-func repoMatchesFilter(filter []string, name string) bool {
-	if len(filter) == 0 {
-		return true
-	}
-	for _, f := range filter {
-		if f == name {
-			return true
-		}
-	}
-	return false
 }
 
 func SearchHistoryResults(cfg *config.Config, wsDir, query string, repoFilter []string, jobs int) ([]HistoryResult, error) {
