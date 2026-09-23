@@ -1152,8 +1152,8 @@ func TestAdd_ProgressGoesToInjectedPrinter(t *testing.T) {
 	}
 }
 
-// syncPromptWorkspace builds a workspace holding one git repository whose
-// configured branch is `branch`, so a sync has a reason to prompt.
+// syncPromptWorkspace builds a workspace with one repository configured for
+// branch, so a sync has a reason to prompt.
 func syncPromptWorkspace(t *testing.T, branch string, dirty bool) *Workspace {
 	t.Helper()
 	root := t.TempDir()
@@ -1171,9 +1171,6 @@ func syncPromptWorkspace(t *testing.T, branch string, dirty bool) *Workspace {
 	return New(root, cfg)
 }
 
-// TestSync_CheckoutPrompt covers the ConfirmCheckout gate: declining skips the
-// repository, accepting lets the checkout happen, and an error from the prompt
-// fails the sync.
 func TestSync_CheckoutPrompt(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -1232,9 +1229,6 @@ func TestSync_CheckoutPrompt(t *testing.T) {
 	}
 }
 
-// TestSync_DirtyPrompt covers the dirty-tree gate: without a prompt the
-// repository is skipped, with one the answer decides, and --allow-dirty stops
-// it being asked at all.
 func TestSync_DirtyPrompt(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -1270,8 +1264,7 @@ func TestSync_DirtyPrompt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Configured branch differs from the checked-out one, so the sync
-			// would checkout — which is what makes a dirty tree matter.
+			// The sync would checkout, which is what makes a dirty tree matter.
 			ws := syncPromptWorkspace(t, "other", true)
 			ws.Printer = output.NewSyncPrinter(io.Discard, io.Discard)
 
@@ -1304,8 +1297,7 @@ func TestSync_DirtyPrompt(t *testing.T) {
 	}
 }
 
-// A dirty tree only blocks work that could lose it. A sync with neither a
-// checkout nor a pull to do leaves the repository alone and never asks.
+// A dirty tree only blocks work that could lose it.
 func TestSync_DirtyWithNothingToDoIsNotBlocked(t *testing.T) {
 	ws := syncPromptWorkspace(t, "main", true)
 	ws.Printer = output.NewSyncPrinter(io.Discard, io.Discard)
@@ -1342,10 +1334,8 @@ func TestDirtyReason(t *testing.T) {
 	}
 }
 
-// The working tree is read before the checkout prompt, so a repository git
-// cannot inspect fails before the user is asked about work that will not
-// happen. Pin that ordering from the outside: the prompt dirties the tree, and
-// the sync must still proceed on the state that was read before it.
+// Pins the read-before-prompt ordering from outside: the prompt dirties the
+// tree, and the sync must still proceed on the state read before it.
 func TestSync_ReadsWorkingTreeBeforePrompting(t *testing.T) {
 	ws := syncPromptWorkspace(t, "other", false)
 	ws.Printer = output.NewSyncPrinter(io.Discard, io.Discard)
@@ -1372,17 +1362,15 @@ func TestSync_ReadsWorkingTreeBeforePrompting(t *testing.T) {
 	}
 }
 
-// A dry run only reports what would happen, so it must not ask whether to
-// check out, and the flag combination a real run rejects must not error before
-// the preview is produced.
+// A dry run must not ask whether to check out, and the flag combination a real
+// run rejects must not error before the preview.
 func TestSync_DryRunSkipsCheckoutPromptAndFetchRequirement(t *testing.T) {
 	tests := []struct {
 		name string
 		opts SyncOptions
 	}{
 		{name: "checkout due", opts: SyncOptions{}},
-		// Outside a dry run this combination is an error, but the check sits
-		// after the preview returns, so a preview still succeeds.
+		// The check sits after the preview returns.
 		{name: "create-branch-if-missing without fetch", opts: SyncOptions{CreateBranchIfMissing: true}},
 	}
 
@@ -1410,10 +1398,8 @@ func TestSync_DryRunSkipsCheckoutPromptAndFetchRequirement(t *testing.T) {
 	}
 }
 
-// The dirty gate, unlike the checkout prompt, is not suppressed in a dry run:
-// a preview of a repository it would refuse to touch still asks. Recorded as
-// it is rather than as it arguably should be — changing it is a behavior
-// change, not a refactor.
+// The dirty gate, unlike the checkout prompt, is not suppressed in a dry run.
+// Odd, but pre-existing: changing it is a behavior change, not a refactor.
 func TestSync_DryRunStillConsultsTheDirtyGate(t *testing.T) {
 	ws := syncPromptWorkspace(t, "other", true)
 	ws.Printer = output.NewSyncPrinter(io.Discard, io.Discard)

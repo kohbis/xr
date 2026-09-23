@@ -604,8 +604,8 @@ func (w *Workspace) syncClone(repo config.Repository, destPath string, opts Sync
 }
 
 // syncGitRepo performs fetch, checkout, and pull on a git repository directory.
-// It reports whether the repository was skipped, which happens when a prompt
-// declined the work, when a dirty tree blocked it, or in a dry run.
+// It reports whether the repository was skipped: a prompt declined the work, a
+// dirty tree blocked it, or it was a dry run.
 func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOptions, p *output.SyncPrinter) (bool, error) {
 	currentBranch := gitCurrentBranch(dir)
 	needsCheckout := repo.Branch != "" && currentBranch != repo.Branch
@@ -644,12 +644,11 @@ func (w *Workspace) syncGitRepo(repo config.Repository, dir string, opts SyncOpt
 	return false, nil
 }
 
-// confirmSync applies the two gates that can stop a repository before any git
-// command runs: the checkout prompt, and a dirty working tree. It reports
-// whether the repository should be skipped.
+// confirmSync applies the two gates that stop a repository before any git
+// command runs: the checkout prompt and a dirty working tree.
 func confirmSync(repo config.Repository, dir, currentBranch string, needsCheckout bool, opts SyncOptions, p *output.SyncPrinter) (bool, error) {
-	// Read the tree before prompting, so a repository git cannot inspect fails
-	// without first asking the user about work that will not happen.
+	// Before prompting, so a repository git cannot inspect fails without first
+	// asking about work that will not happen.
 	dirty, err := git.IsDirty(dir)
 	if err != nil {
 		return false, err
@@ -666,8 +665,7 @@ func confirmSync(repo config.Repository, dir, currentBranch string, needsCheckou
 		}
 	}
 
-	// Only checkout and pull can lose uncommitted work, so a fetch-only sync
-	// runs on a dirty tree regardless.
+	// Only checkout and pull can lose uncommitted work.
 	blocked := dirty && (needsCheckout || opts.Pull) && !opts.AllowDirty
 	if !blocked {
 		return false, nil
@@ -688,8 +686,7 @@ func confirmSync(repo config.Repository, dir, currentBranch string, needsCheckou
 	return false, nil
 }
 
-// dirtyReason names what the sync would have done to the dirty tree, so the
-// prompt says what is at stake.
+// dirtyReason tells the prompt what is at stake.
 func dirtyReason(needsCheckout, needsPull bool) string {
 	switch {
 	case needsCheckout && needsPull:
@@ -739,7 +736,6 @@ func fetchOrigin(dir string, opts SyncOptions, p *output.SyncPrinter) error {
 	return nil
 }
 
-// switchToBranch puts the repository on repo.Branch, reporting the step.
 func switchToBranch(dir string, repo config.Repository, currentBranch string, opts SyncOptions, p *output.SyncPrinter) error {
 	if currentBranch == repo.Branch {
 		p.OK(fmt.Sprintf("already on %s", repo.Branch))
@@ -754,12 +750,11 @@ func switchToBranch(dir string, repo config.Repository, currentBranch string, op
 }
 
 // checkoutBranch checks out repo.Branch, falling back to branching off
-// origin/<branch> and, with CreateBranchIfMissing, off the current HEAD.
+// origin/<branch> and, with CreateBranchIfMissing, off HEAD.
 //
-// Every fallback that does not work out reports the original checkout failure
-// rather than its own: that first error is the one that says why the branch
-// could not simply be checked out, and the rest are attempts to recover from
-// it.
+// A fallback that does not work out reports the original checkout failure, not
+// its own: that first error says why the branch would not check out, and the
+// rest are attempts to recover from it.
 func checkoutBranch(dir string, repo config.Repository, opts SyncOptions) error {
 	err := git.RunQuiet(dir, "checkout", repo.Branch)
 	if err == nil {
@@ -781,9 +776,8 @@ func checkoutBranch(dir string, repo config.Repository, opts SyncOptions) error 
 	if !opts.CreateBranchIfMissing {
 		return checkoutFailed
 	}
-	// A local branch that exists yet refused to check out is a real problem:
-	// --create-branch-if-missing is for a branch that is missing, so it must not
-	// paper over that.
+	// --create-branch-if-missing is for a missing branch, so a local one that
+	// exists yet refused to check out must not be papered over.
 	localExists, lerr := git.RefExists(dir, "refs/heads/"+repo.Branch)
 	if lerr != nil || localExists {
 		return checkoutFailed
@@ -795,8 +789,8 @@ func checkoutBranch(dir string, repo config.Repository, opts SyncOptions) error 
 }
 
 // pullBranch pulls the configured branch, or the checked-out one when
-// repos.yaml names none. A repository whose branch cannot be determined is
-// reported as a failed step rather than failing the sync.
+// repos.yaml names none. An undeterminable branch is a failed step, not a
+// failed sync.
 func pullBranch(dir string, repo config.Repository, p *output.SyncPrinter) error {
 	branch := repo.Branch
 	if branch == "" {
