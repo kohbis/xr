@@ -416,15 +416,13 @@ func TestPrune(t *testing.T) {
 	}
 }
 
-// A repository whose path escapes the worktrees directory must be refused
-// before git creates anything. The branch name here is valid, so validateBranch
-// lets it through and the containment check is what has to catch it.
+// The branch name is valid, so validateBranch lets it through and the
+// containment check is what has to stop this before git creates anything.
 func TestAdd_RepoPathEscapesWorktreesDir(t *testing.T) {
 	m, _ := setupRepo(t)
 
 	// repos/../escape is a real repository, so RepoDir resolves and the add
-	// reaches the containment check — but worktrees/../escape is outside the
-	// directory worktrees are allowed to live in.
+	// gets as far as the check; worktrees/../escape is outside the root.
 	initGitRepo(t, filepath.Join(m.Root, "escape"))
 	repo := config.Repository{Name: "escape", Path: "../escape", Type: config.RepoTypeClone}
 
@@ -441,8 +439,7 @@ func TestAdd_RepoPathEscapesWorktreesDir(t *testing.T) {
 	}
 }
 
-// removeEmptyDirs walks upwards deleting empty directories, so it must stop at
-// the worktrees root rather than continue into an empty directory beside it.
+// Walking upwards must stop at the root, not continue into an empty sibling.
 func TestRemoveEmptyDirs_StopsOutsideRoot(t *testing.T) {
 	base := t.TempDir()
 	root := filepath.Join(base, "worktrees")
