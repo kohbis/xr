@@ -187,8 +187,6 @@ func TestRepoResultFrom(t *testing.T) {
 		detail    string
 		wantError string
 	}{
-		// Detail is the error only for a failure. On any other status it holds a
-		// skip reason or a progress note, which must not be reported as an error.
 		{name: "failure reports detail as the error", status: StatusFailed, detail: "checkout main: boom", wantError: "checkout main: boom"},
 		{name: "skip reason is not an error", status: "skipped", detail: "dirty; skipped"},
 		{name: "success note is not an error", status: "synced", detail: "already on main"},
@@ -221,7 +219,6 @@ func TestPrintActionSummary(t *testing.T) {
 		{name: "all three counts", label: "synced", changed: 2, skipped: 1, failed: 3, want: "\nDone: 2 synced, 1 skipped, 3 failed\n"},
 		{name: "label names the changed repos", label: "created", changed: 1, want: "\nDone: 1 created\n"},
 		{name: "zero counts are omitted", label: "synced", failed: 1, want: "\nDone: 1 failed\n"},
-		// A run with nothing to do says so rather than trailing off after "Done:".
 		{name: "nothing to do", label: "synced", want: "\nDone: nothing to do\n"},
 	}
 

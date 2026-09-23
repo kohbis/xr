@@ -62,10 +62,9 @@ func (m *Manager) RepoDir(repo config.Repository) (string, error) {
 	return resolved, nil
 }
 
-// repoDirs maps repository name to backing git directory, leaving out the
-// repositories that are not usable in the workspace. Callers treat an absent
-// name as "not available" rather than as an error, so the reason RepoDir gave
-// is deliberately dropped here.
+// repoDirs maps repository name to backing git directory, leaving out the ones
+// not usable in the workspace. Callers treat an absent name as "not available",
+// so the reason RepoDir gave is dropped.
 func (m *Manager) repoDirs(repos []config.Repository) map[string]string {
 	dirs := make(map[string]string, len(repos))
 	for _, repo := range repos {

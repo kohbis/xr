@@ -14,9 +14,8 @@ import (
 	"sync"
 )
 
-// ValidateJobs rejects a --jobs value that cannot mean anything. Jobs would
-// silently clamp it, which turns a typo into a sequential run rather than an
-// error, so every command carrying the flag checks it before starting work.
+// ValidateJobs rejects a --jobs value below 1, which Jobs would otherwise clamp
+// silently, turning a typo into a sequential run rather than an error.
 func ValidateJobs(jobs int) error {
 	if jobs < 1 {
 		return errors.New("--jobs must be at least 1")

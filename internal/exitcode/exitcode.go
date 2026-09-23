@@ -50,9 +50,7 @@ func Failed(cmd *cobra.Command) error {
 	return Silent(1)
 }
 
-// FailedIf is Failed when failed is non-zero and nil otherwise. Commands that
-// count per-repository failures return it directly, so "some repositories
-// failed" is expressed the same way everywhere.
+// FailedIf is Failed when failed is non-zero, nil otherwise.
 func FailedIf(cmd *cobra.Command, failed int) error {
 	if failed == 0 {
 		return nil

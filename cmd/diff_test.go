@@ -6,9 +6,6 @@ import (
 	"github.com/kohbis/xr/internal/output"
 )
 
-// scanRepoResult classifies one repository of a diff scan. The okStatus
-// argument exists because "scanned, and it matched" is spelled differently by
-// the two commands and both spellings are documented --json output.
 func TestScanRepoResult(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -21,7 +18,7 @@ func TestScanRepoResult(t *testing.T) {
 		{name: "history with matches", matches: 3, okStatus: "ok", wantStatus: "ok"},
 		{name: "pattern without matches", okStatus: "matched", wantStatus: "no_matches"},
 		{name: "history without matches", okStatus: "ok", wantStatus: "no_matches"},
-		// An error wins over the match count, including the count it left behind.
+		// An error wins over the match count it left behind.
 		{name: "error outranks matches", matches: 2, errMsg: "git log: boom", okStatus: "ok", wantStatus: output.StatusFailed},
 		{name: "error without matches", errMsg: "scan failed", okStatus: "matched", wantStatus: output.StatusFailed},
 	}

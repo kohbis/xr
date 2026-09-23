@@ -100,10 +100,9 @@ func loadDiffWorkspace() (*config.Config, string, error) {
 	return cfg, wsDir, nil
 }
 
-// scanRepoResult classifies one repository of a diff scan from its match count
-// and error. okStatus is the command's own word for "scanned, and it matched":
-// "matched" for pattern, "ok" for history. The two differ only because both
-// are already part of the --json contract.
+// scanRepoResult classifies one repository of a diff scan. okStatus is the
+// command's own word for a repository with matches — "matched" for pattern,
+// "ok" for history — which differ only because both are already --json output.
 func scanRepoResult(repo string, matches int, errMsg, okStatus string) output.RepoResult {
 	status := okStatus
 	switch {

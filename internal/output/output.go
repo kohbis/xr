@@ -28,16 +28,13 @@ type RepoResult struct {
 	Metrics map[string]int `json:"metrics,omitempty"`
 }
 
-// StatusFailed is the one status string that means the repository failed. The
-// rest of the vocabulary is per command (synced, created, matched, ...), but
-// this value is what every --json consumer gates on, so it is shared rather
-// than spelled out again in each package.
+// StatusFailed is shared because every --json consumer gates on it. The rest of
+// the vocabulary (synced, created, matched, ...) stays per command.
 const StatusFailed = "failed"
 
-// RepoResultFrom builds a result for a repository whose status was already
-// decided by an internal package. detail becomes the error only for a failure:
-// otherwise it carries a skip reason or a progress note, neither of which
-// belongs in an "error" field.
+// RepoResultFrom builds a result from a status an internal package already
+// decided. detail is the error only for a failure; otherwise it is a skip
+// reason or a progress note, which do not belong in an "error" field.
 func RepoResultFrom(name, status, detail string) RepoResult {
 	r := RepoResult{Name: name, Status: status}
 	if status == StatusFailed {
