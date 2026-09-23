@@ -19,8 +19,7 @@ func TestInside(t *testing.T) {
 		{"parent", "/workspace/repos", "/workspace", true},
 		{"outside path", "/workspace/worktrees", "/workspace/repos/api", true},
 		{"prefix sibling directory", "/ws/wt", "/ws/wt-other/api", true},
-		// The reason whole elements are compared rather than a string prefix:
-		// "..foo" starts with ".." but never leaves dir.
+		// Starts with "..", never leaves dir.
 		{"child starting with dots", "/workspace/repos", "/workspace/repos/..foo", false},
 	}
 
@@ -34,8 +33,7 @@ func TestInside(t *testing.T) {
 	}
 }
 
-// Relative paths are resolved against the working directory, so a relative dir
-// and an absolute path under it are still recognised as contained.
+// A relative dir and an absolute path under it are both resolved first.
 func TestInsideRelativeDir(t *testing.T) {
 	abs, err := filepath.Abs(filepath.Join("repos", "api"))
 	if err != nil {
