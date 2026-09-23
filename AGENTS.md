@@ -31,7 +31,7 @@ xr/
 │   ├── diff/                # File comparison and git history search
 │   ├── doctor/              # Environment and workspace diagnosis (xr doctor)
 │   └── shellcomp/           # Shared repository-name shell completion
-├── go.mod                   # Module: github.com/kohbis/xr, Go 1.25.7
+├── go.mod                   # Module: github.com/kohbis/xr, Go 1.27.1
 ├── Makefile                 # Build, test, lint, release targets
 ├── .golangci.yml            # Linter configuration
 ├── .goreleaser.yaml         # Release automation (Homebrew + GitHub Releases)
@@ -44,8 +44,8 @@ xr/
 ## Environment Setup
 
 Prerequisites for development:
-- **Go 1.25+** — required to build and test
-- **golangci-lint** — required for `make lint` and CI
+- **Go 1.27+** — required to build and test
+- **golangci-lint** — required for `make lint` and CI, and must itself be built with Go 1.27 or newer: an older build refuses the module rather than linting it
 - **git** — required for clone operations and tests
 
 ## Development Workflow
