@@ -1,11 +1,9 @@
 // Package pathsafe checks that a derived path stays inside the directory it is
 // meant to live in.
 //
-// The check is lexical: it compares the two paths as text and never touches the
-// filesystem. It catches a path that spells its way out with "..", not one that
-// leaves through a symlinked parent — if repos/link points outside, repos/link/x
-// is still "inside" repos. A caller that must not follow a symlink out has to
-// resolve the path itself, or work through os.OpenRoot.
+// Symlinks along the way are resolved, so a path cannot leave through a
+// symlinked parent. The final component is not: xr puts a symlink there for
+// every symlink repository, and a caller acts on the link, not its target.
 package pathsafe
 
 import (
@@ -15,18 +13,20 @@ import (
 	"strings"
 )
 
-// Inside reports whether path is lexically contained within dir. dir itself is
-// not "inside" dir: a caller about to create or delete path would otherwise be
+// Inside reports whether path is contained within dir. dir itself is not
+// "inside" dir: a caller about to create or delete path would otherwise be
 // handed the directory it is supposed to be confined to.
 func Inside(dir, path string) error {
-	absDir, err := filepath.Abs(dir)
+	absDir, err := resolveExisting(dir)
 	if err != nil {
 		return fmt.Errorf("resolving %q: %w", dir, err)
 	}
-	absPath, err := filepath.Abs(path)
+	parent, err := resolveExisting(filepath.Dir(path))
 	if err != nil {
-		return fmt.Errorf("resolving %q: %w", path, err)
+		return fmt.Errorf("resolving %q: %w", filepath.Dir(path), err)
 	}
+	absPath := filepath.Join(parent, filepath.Base(path))
+
 	rel, err := filepath.Rel(absDir, absPath)
 	if err != nil {
 		return fmt.Errorf("relating %q to %q: %w", path, dir, err)
@@ -36,4 +36,29 @@ func Inside(dir, path string) error {
 		return fmt.Errorf("path %q escapes %q", path, dir)
 	}
 	return nil
+}
+
+// resolveExisting resolves symlinks in the deepest part of path that exists,
+// leaving the components below it as given.
+func resolveExisting(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	var missing []string
+	for current := abs; ; {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			return filepath.Join(append([]string{resolved}, missing...)...), nil
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return abs, nil
+		}
+		missing = append([]string{filepath.Base(current)}, missing...)
+		current = parent
+	}
 }

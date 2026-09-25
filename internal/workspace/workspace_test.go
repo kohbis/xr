@@ -1423,3 +1423,63 @@ func TestSync_DryRunStillConsultsTheDirtyGate(t *testing.T) {
 		t.Errorf("Skipped = %d, want 1", result.Skipped)
 	}
 }
+
+// The path reads as inside; before the check resolved symlinks this deleted
+// what the link pointed at.
+func TestRemove_RejectsEscapeThroughSymlinkedParent(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	victim := filepath.Join(outside, "victim")
+	if err := os.MkdirAll(victim, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	wsDir := filepath.Join(root, "repos")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(wsDir, "link")); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := config.Repository{Name: "r", Path: "link/victim", Type: config.RepoTypeClone}
+	cfg := &config.Config{Workspace: "./repos", Repositories: []config.Repository{repo}}
+	ws := New(root, cfg)
+	ws.Printer = output.NewSyncPrinter(io.Discard, io.Discard)
+
+	if err := ws.Remove([]config.Repository{repo}); err == nil {
+		t.Error("Remove() through a symlinked parent = nil, want error")
+	}
+	if _, err := os.Stat(victim); err != nil {
+		t.Errorf("Remove() deleted %s, which is outside the workspace", victim)
+	}
+}
+
+// Resolving parents must not cost the symlink repository its own removal.
+func TestRemove_StillRemovesASymlinkRepository(t *testing.T) {
+	root := t.TempDir()
+	target := t.TempDir()
+	wsDir := filepath.Join(root, "repos")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(wsDir, "local")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := config.Repository{Name: "local", Path: "local", Type: config.RepoTypeSymlink, Source: target}
+	cfg := &config.Config{Workspace: "./repos", Repositories: []config.Repository{repo}}
+	ws := New(root, cfg)
+	ws.Printer = output.NewSyncPrinter(io.Discard, io.Discard)
+
+	if err := ws.Remove([]config.Repository{repo}); err != nil {
+		t.Fatalf("Remove() on a symlink repository = %v, want nil", err)
+	}
+	if _, err := os.Lstat(link); err == nil {
+		t.Error("Remove() left the symlink in place")
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Errorf("Remove() followed the symlink and deleted its target %s", target)
+	}
+}
