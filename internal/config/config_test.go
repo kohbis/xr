@@ -261,6 +261,28 @@ func TestLoad_DuplicateNameOrPath(t *testing.T) {
 	}
 }
 
+func TestLoad_UnknownKeysIgnored(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "repos.yaml")
+	content := `extra: true
+repositories:
+  - name: api
+    source: git@github.com:user/api.git
+    branche: main
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Repositories[0].Branch != "" {
+		t.Errorf("Branch = %q, want empty; unknown keys are ignored", cfg.Repositories[0].Branch)
+	}
+}
+
 func TestRepository_IsSymlink(t *testing.T) {
 	r := &Repository{Type: RepoTypeSymlink}
 	if !r.IsSymlink() {
