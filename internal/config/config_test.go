@@ -202,6 +202,65 @@ func TestLoad_EmptyPathDefaultsToName(t *testing.T) {
 	}
 }
 
+func TestLoad_DuplicateNameOrPath(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{
+			name: "duplicate name",
+			content: `repositories:
+  - name: api
+    source: git@github.com:user/api.git
+    path: api
+  - name: api
+    source: git@github.com:user/api-other.git
+    path: api-other
+`,
+			want: `duplicate repository name "api"`,
+		},
+		{
+			name: "duplicate path",
+			content: `repositories:
+  - name: api
+    source: git@github.com:user/api.git
+    path: shared
+  - name: web
+    source: git@github.com:user/web.git
+    path: shared
+`,
+			want: `duplicate repository path "shared"`,
+		},
+		{
+			name: "omitted path collides with another name",
+			content: `repositories:
+  - name: api
+    source: git@github.com:user/api.git
+  - name: web
+    source: git@github.com:user/web.git
+    path: api
+`,
+			want: `duplicate repository path "api"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgPath := filepath.Join(dir, "repos.yaml")
+			if err := os.WriteFile(cfgPath, []byte(tt.content), 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := Load(cfgPath)
+			if err == nil || err.Error() != tt.want {
+				t.Fatalf("Load() error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestRepository_IsSymlink(t *testing.T) {
 	r := &Repository{Type: RepoTypeSymlink}
 	if !r.IsSymlink() {

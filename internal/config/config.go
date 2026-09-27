@@ -206,5 +206,18 @@ func normalize(cfg *Config) (*Config, error) {
 		}
 	}
 
+	seenNames := make(map[string]struct{}, len(cfg.Repositories))
+	seenPaths := make(map[string]struct{}, len(cfg.Repositories))
+	for _, repo := range cfg.Repositories {
+		if _, ok := seenNames[repo.Name]; ok {
+			return nil, fmt.Errorf("duplicate repository name %q", repo.Name)
+		}
+		seenNames[repo.Name] = struct{}{}
+		if _, ok := seenPaths[repo.Path]; ok {
+			return nil, fmt.Errorf("duplicate repository path %q", repo.Path)
+		}
+		seenPaths[repo.Path] = struct{}{}
+	}
+
 	return cfg, nil
 }
