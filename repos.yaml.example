@@ -1,3 +1,5 @@
+# name and path are unique in this file. Unknown keys are ignored.
+# Omit branch to leave that repository's checkout unchanged.
 workspace: ./repos           # directory where repos will be placed
 worktrees: ./worktrees       # directory for git worktrees (optional, this is the default)
 

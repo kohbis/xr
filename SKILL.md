@@ -9,323 +9,66 @@ description: >
 
 # xr — Agent Skills Reference
 
-This document describes what AI agents can accomplish with the `xr` CLI across a multi-repository workspace. It is focused on capabilities and invocation — not installation or development of xr itself.
+What an agent can do with the `xr` CLI across a multi-repository workspace. Flags and examples are on `xr --help` and `xr <cmd> --help`; this file is which command to run, and the constraints that are easy to get wrong. `xr skill` prints this file.
 
-## Workspace Model
+## Workspace model
 
-`xr` manages a set of repositories defined in `repos.yaml`. All repos are materialized under a single workspace directory (default: `./repos`). Three repo types exist:
+Repositories are declared in `repos.yaml` and materialized under one workspace directory (default `./repos`).
 
 | Type | How it works | When to use |
 |------|-------------|-------------|
-| `clone` | plain `git clone` (default for remote URLs) | remote repo, local working copy |
-| `symlink` | symlink to a local path | local repo already on disk |
+| `clone` | `git clone` (default) | remote URL |
+| `symlink` | symlink to a local path | repo already on disk |
 
-Type is auto-inferred: local paths (`/…` or `~…`) → `symlink`; remote URLs → `clone`.
+A source starting with `/` or `~` is a `symlink` when `type` is omitted; any other source is a `clone`. `name` and `path` must be unique (`path` defaults to `name`). Unknown keys are ignored. Omit `branch` to leave that repository's checkout unchanged.
 
----
+`workspace` and `worktrees` are resolved relative to the config file. Without `--config`, xr uses the nearest `repos.yaml` at or above the working directory, including from inside a managed repository. `xr init` is the exception: it takes `-f` / `--file`, not `--config`.
 
-## Quick reference
+## Which command
 
 | Goal | Command |
 |------|---------|
-| Bootstrap a workspace unattended | `xr repo sync --clone-missing --update` |
-| Sync a large workspace faster | `xr repo sync --update -j 8 --allow-dirty` |
-| Match branches | `xr repo sync` |
-| Preview sync (no changes) | `xr repo sync --dry-run` |
-| Fetch remote + match branches | `xr repo sync --update` |
-| Fetch with prune stale refs | `xr repo sync --update --prune` |
-| Import discoveries without prompt | `xr repo import --yes` |
-| Run a command in every repo | `xr exec -- go test ./...` |
-| Search across repos | `xr search PATTERN` |
-| Compare a file across repos | `xr diff file PATH` |
-| Worktree in selected repos | `xr worktree add BRANCH -r NAME -r NAME` |
-| Clean up merged worktrees | `xr worktree prune --gone` |
-| Check tools and workspace | `xr doctor` |
-| Another workspace config | `xr --config PATH repo list` |
+| Bootstrap unattended | `xr repo sync --clone-missing --update` |
+| Match branches / fetch | `xr repo sync` |
+| Import repos already on disk | `xr repo import` |
+| Add or remove one repo | `xr repo add` / `xr repo remove` |
+| List status | `xr repo list` |
+| Run a command in each repo | `xr exec -- <command>` |
+| Search file contents | `xr search PATTERN` |
+| git diff / a file / commit messages | `xr diff` / `file` / `pattern` / `history` |
+| Worktrees | `xr worktree` |
+| Directory layout | `xr tree` |
+| Ignore the workspace directory | `xr repo gitignore` |
+| Check tools and config | `xr doctor` |
+| Another workspace | `xr --config PATH <command>` |
 
-**Preview vs execute:** `xr repo sync` runs by default; use `--dry-run` to preview. `xr repo import` prompts before writing; use `--yes` to apply unattended or `--dry-run` to scan only.
+## Running unattended
 
-**Config paths:** most commands use global `--config`. `xr init` uses `-f` / `--file` for the repos.yaml path during setup (not `--config`). The `workspace` and `worktrees` directories are resolved relative to the config file, not the working directory.
+- `xr init` prompts and refuses `--non-interactive`. Materialize a committed `repos.yaml` with `xr repo sync --clone-missing`.
+- `--non-interactive` fails instead of prompting. `--yes` confirms writes and destructive actions (`repo import`, `repo remove`, `repo gitignore`, `worktree remove`, `worktree prune --gone`).
+- `xr repo sync` prompts on a dirty checkout unless `--allow-dirty` or `--yes` is set. `--jobs` above 1 cannot prompt, so pass one of those or dirty repositories are skipped.
+- Commands that report per-repository results (`repo sync`, `exec`, `worktree add` / `remove` / `prune`, `search`, `diff pattern`) exit non-zero when any repository failed. A repository missing from the workspace is skipped, not failed. `repo list` always exits 0.
+- `xr doctor` exits non-zero only when a required tool is missing or `repos.yaml` cannot be parsed. A workspace that has not been cloned, a missing `rg`, or no config at all are warnings and exit 0.
 
-**Exit status:** commands that report per-repository results (`repo sync`, `exec`, `worktree add` / `remove` / `prune`, `search`, `diff pattern`) exit non-zero when any repository failed, so the exit status alone can gate a pipeline. Repositories missing from the workspace are skipped, not failed.
+## Constraints
 
----
+**`xr exec`** runs the command directly, with no shell. Pipelines need `xr exec -- bash -c '...'`. Each repository gets `XR_REPO_NAME` and `XR_REPO_PATH`.
 
-## Commands and What They Enable
+**`xr search`** searches files git knows about (tracked, plus untracked that are not ignored) and skips binaries. A glob with no separator matches the file name at any depth (`*.go`); one with a separator matches the relative path (`cmd/*.go`). Results are the same whether or not `rg` is installed, and whatever `-j` is set to.
 
-### Workspace initialization
+**Worktrees** are the pair `(repository, branch)`. Nothing is stored in `repos.yaml`; group a task with a branch-name glob. `add` without `--repo` prompts. The model, layout, and branch resolution are on `xr worktree --help`. After merges: `xr repo sync --update --prune`, then `xr worktree prune --gone --yes`.
 
-```sh
-xr init [directory]
-xr init -f path/to/repos.yaml [directory]
-```
+**`xr repo gitignore`** does not write `.gitignore` unless `--yes` is passed or the prompt is answered.
 
-Sets up a workspace from `repos.yaml`: creates the directory, clones remote repos, and creates symlinks for local repos. **Interactive only** (multiple prompts; not suitable for unattended CI).
-
----
-
-### Repository management (`xr repo`)
-
-```sh
-xr repo list                            # show all repos with type, branch, path, source
-xr repo list -r api -r web              # limit to specific repos
-xr repo list --json                     # machine-readable repo status output
-xr repo add <name> -s <source>          # add a repo (type inferred from source)
-xr repo add <name> -s <source> -p sub/dir     # specify relative path in workspace
-xr repo remove <name>                   # remove from config and workspace
-xr repo remove <name> --force           # skip confirmation prompt
-xr repo remove <name> --config-only     # remove from config only, keep files
-xr repo sync                            # switch branches to match repos.yaml
-xr repo sync --dry-run                  # preview without changes
-xr repo sync <name> [<name>...]         # sync specific repos only
-xr repo sync --update                   # fetch, switch branch, and pull latest
-xr repo sync --update --prune           # fetch with prune, switch, and pull
-xr repo sync --clone-missing            # clone missing repos / recreate missing symlinks
-xr repo sync -j 8                       # sync 8 repos concurrently (no prompts above 1)
-xr repo sync --allow-dirty              # skip dirty-repo prompts (recommended with --non-interactive)
-xr repo sync --create-branch-if-missing --update  # create local branch if missing (requires --update)
-xr repo sync --update --allow-dirty --json  # per-repo status as JSON (no prompts)
-xr repo sync --update --report sync.json    # same document written to a file
-xr repo import                          # discover repos in workspace dir and add to repos.yaml
-xr repo import --yes                    # apply discoveries without prompting
-xr repo import --dry-run                # preview discovered repos without writing
-```
-
-**Agent use cases:**
-- Materialize a workspace from a committed `repos.yaml` without prompts:
-  `xr repo sync --clone-missing --update` (`xr init` is interactive and cannot be used here).
-  `sync` exits non-zero if any repository fails, so the exit status is enough to gate a pipeline.
-  `--json` reports each repository's status (`synced`, `skipped`, `failed`), its skip reason or
-  error, and the steps taken, for callers that need to know which repository failed and why.
-- Enumerate the workspace before operating: `xr repo list`
-- Add a newly created repo to the workspace: `xr repo add`
-- Ensure all repos are on their configured branches: `xr repo sync`
-- Bring all repos up to date with remote: `xr repo sync --update`
-- Switch symlink repos to their configured branch: `xr repo sync` (requires `branch` in config)
-- Bootstrap a config from an existing workspace on disk: `xr repo import --dry-run`
-
----
-
-### Cross-repository execution (`xr exec`)
-
-```sh
-xr exec -- go test ./...           # run in every repo
-xr exec -r api -r web -- make lint # limit to specific repos
-xr exec -j 8 -- git fetch --prune  # 8 repos concurrently
-xr exec --json -- git status --porcelain
-xr exec -- bash -c 'cmd | other'   # pipelines need an explicit shell
-```
-
-The command runs directly, without a shell, so its arguments pass through
-unchanged — no quoting surprises. Each repository runs with `XR_REPO_NAME` and
-`XR_REPO_PATH` in its environment. Repositories missing from the workspace are
-skipped, not failed.
-
-`xr exec` exits non-zero if the command failed in any repository, so the exit
-status alone can gate a pipeline. `--json` reports each repository's exit code
-plus its captured stdout and stderr.
-
-**Agent use cases:**
-- Run the same check across the workspace and act on the failures:
-  `xr exec --json -- make test`
-- Apply a mechanical change everywhere: `xr exec -- bash -c 'sed -i ... file'`
-- Inspect state that needs a real command rather than a search:
-  `xr exec --json -- git rev-parse HEAD`
-
----
-
-### Cross-repository search (`xr search`)
-
-```sh
-xr search <pattern>
-xr search -e "func\s+\w+"         # regex
-xr search -i "error"               # case-insensitive
-xr search -g "*.go" "TODO"         # filter by file glob (any depth)
-xr search -g "cmd/*.go" "TODO"     # glob with a separator matches the path
-xr search -C 3 "panic"             # 3 lines of context
-xr search -r project-a "main"      # limit to one repo
-xr search -r a -r b "pattern"      # limit to multiple repos
-xr search -j 8 "pattern"           # search 8 repos concurrently
-xr search --json "pattern"         # machine-readable match output
-```
-
-Searches the files git knows about in each repository — tracked files plus
-untracked files that are not ignored — so build output and dependency trees stay
-out of the results while tracked dot directories such as `.github` are included.
-Binary files are skipped. A glob without a separator matches the file name at any
-depth (`*.go`), one containing a separator matches the relative path
-(`cmd/*.go`). Results and their order are the same whether or not ripgrep is
-installed, and whatever `-j` is set to.
-
-**Agent use cases:**
-- Find all usages of a symbol, pattern, or interface across repos
-- Locate TODOs, FIXMEs, or deprecated calls workspace-wide
-- Narrow scope with `-r` before making changes in a specific repo
-
----
-
-### Cross-repository comparison (`xr diff`)
-
-```sh
-xr diff                        # git diff in each repo (pager disabled)
-xr diff -- --stat              # pass extra args to git
-xr diff -- --name-only         # list changed file paths per repo
-xr diff -r project-a           # limit git diff to one repo
-xr diff file go.mod            # unified diff of a file across all repos
-xr diff pattern "version"      # show where pattern occurs per-repo
-xr diff history "fix:"         # search git commit messages across repos
-xr diff file go.mod -r a -r b
-xr diff pattern "foo" -j 8      # scan 8 repos concurrently (any diff mode)
-xr diff history "fix:" --json
-xr diff pattern "foo" --report diff-report.json
-```
-
-`--json` and `--report` work on `xr diff file`, `pattern`, and `history` only (not default git diff).
-`-j` / `--jobs` works on every diff mode; results stay in repos.yaml order whatever it is set to.
-
-**Agent use cases:**
-- Compare dependency files (`go.mod`, `package.json`, `Cargo.toml`) to find version skew (`xr diff file`)
-- Find which repos have already applied a given change (`xr diff pattern`)
-- Audit recent fixes applied across the workspace (`xr diff history`)
-
----
-
-### Worktrees (`xr worktree`)
-
-```sh
-xr worktree add <branch> -r <repo> [-r <repo>...]      # worktree for <branch> in the given repos
-xr worktree add <branch> -r <repo> --create --base main # create the branch too
-xr worktree list [-b 'feat-x*'] [-r <repo>] [--json]
-xr worktree remove <branch-glob> [--yes] [--force]     # --force discards uncommitted changes
-xr worktree prune [--gone --yes]                       # --gone also removes merged leftovers
-```
-
-A worktree is the pair `(repository, branch)` — git refuses the same branch twice — so a
-task spanning repos, or a repo needing two PRs, is several worktrees. Nothing is stored in
-`repos.yaml`; reconstruct a per-task view from a branch naming convention plus `-b <glob>`.
-Worktrees land in `<worktrees>/<repo path>/<branch>` (default `./worktrees`). `add` checks
-out an existing local branch, else tracks `origin/<branch>`, else needs `--create`.
-
-**Agent use cases:**
-- Isolated checkouts for a change spanning a subset of repos, leaving the main checkouts
-  that `xr repo sync` manages untouched
-- Several in-flight PRs of one repository side by side
-- Clean up after merges: `xr repo sync --update --prune && xr worktree prune --gone --yes`
-
----
-
-### Workspace structure (`xr tree`)
-
-```sh
-xr tree                            # all repos, depth 1
-xr tree project-a                  # single repo
-xr tree --depth 2                  # shallower view
-xr tree --depth 0                  # unlimited depth
-```
-
-**Agent use cases:**
-- Understand the layout of an unfamiliar repo before navigating it
-- Scope analysis before a cross-repo refactor
-
----
-
-### .gitignore management (`xr repo gitignore`)
-
-```sh
-xr repo gitignore          # prompts for confirmation
-xr repo gitignore --yes    # add the entry unattended
-```
-
-Adds the workspace directory to the `.gitignore` next to `repos.yaml`. Useful after `xr init` to prevent committing the workspace directory from the parent repo. Without `--yes` and without a terminal to prompt on, the command fails instead of quietly doing nothing.
-
----
-
-### This reference (`xr skill`)
-
-```sh
-xr skill    # print this file (SKILL.md) to stdout
-```
-
-Prints the embedded copy of this document, so an agent can load it without
-knowing the install path of the `xr` binary or the location of the repo it was
-built from.
-
----
-
-### Environment check (`xr doctor`)
-
-```sh
-xr doctor          # check tools, repos.yaml, and workspace
-xr doctor --json   # machine-readable check results
-```
-
-Reports whether `git` and `diff` are on PATH (required), whether `rg` is
-(optional), which `repos.yaml` would be used, and how much of the workspace is
-materialized. Exits non-zero only when something is actually broken — a missing
-required tool, or a `repos.yaml` that cannot be parsed. A workspace that has not
-been cloned yet, a missing ripgrep, or no config at all are warnings and exit 0.
-
-**Agent use cases:**
-- Fail fast in CI with a clear reason, before a command fails inside a subprocess
-- Check which config a command would pick up: `xr doctor` prints the resolved path
-
----
-
-### Config path override
-
-All commands accept global flags:
-
-```sh
-xr --config path/to/repos.yaml <command>
-xr --no-color <command>   # disable ANSI colors for machine logs
-```
-
-Without `--config`, xr uses the nearest `repos.yaml` in the working directory or
-any parent, so commands also work from inside one of the managed repositories
-(`repos/api/…`) without pointing at the config by hand.
-
-Directories named in repos.yaml (`workspace`, `worktrees`) are resolved relative
-to that file, so `--config` can point at another workspace from any directory.
-
-Useful when operating on multiple independent workspaces from the same working directory.
-
----
-
-## Structured output (`--json` / `--report`)
+## Structured output
 
 | Command | `--json` | `--report` |
 |---------|----------|------------|
 | `xr repo list` | yes | no |
-| `xr search` | yes | no |
-| `xr exec` | yes | no |
+| `xr repo sync` | yes | yes |
+| `xr search`, `xr exec`, `xr doctor` | yes | no |
 | `xr worktree list` / `add` / `remove` / `prune` | yes | no |
 | `xr diff file` / `pattern` / `history` | yes | yes |
-| `xr diff` (default git diff) | no | no |
-| `xr repo sync` | yes | yes |
-| `xr doctor` | yes | no |
+| `xr diff` (git diff) | no | no |
 
----
-
-## Agent automation
-
-Global flags:
-
-- `--non-interactive` — disable prompts; commands return errors instead of blocking on stdin.
-- `--yes` — confirm writes or destructive actions (for example `xr repo import --yes`, `xr repo remove NAME --yes`).
-
-| Command | Unattended pattern |
-|---------|-------------------|
-| `xr repo remove` | `xr repo remove NAME --yes` (or `--force`) |
-| `xr repo import` | `xr repo import --yes` to apply; `--dry-run` to inspect only |
-| `xr repo sync` | Runs by default; add `--allow-dirty` when dirty repos should proceed without prompts |
-| Bootstrap a workspace | `xr repo sync --clone-missing --update`; `--dry-run` previews what would be materialized |
-| Speed up a large workspace | `xr repo sync --update -j 8 --allow-dirty`; output stays ordered by repository |
-| `xr worktree add` | `-r` is required; add `--create` for a new branch |
-| `xr worktree remove` / `prune --gone` | Pass `--yes`; `--force` additionally discards uncommitted changes |
-| `xr init` | Interactive only; `--non-interactive` returns an error — use `xr repo sync --clone-missing` instead |
-
-Tips:
-
-- Prefer `--json` on `repo list`, `repo sync`, `search`, `exec`, and `diff file` / `pattern` / `history` when chaining output into other tools.
-- Add `--no-color` for stable log parsing.
-- For `repo sync`, use `--dry-run` to preview before running without it.
+Prefer `--json` when the next step reads the result. `--no-color` keeps logs free of ANSI sequences. `xr repo sync --json` also disables prompts.
