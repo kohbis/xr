@@ -8,39 +8,6 @@ For using the `xr` CLI as an agent tool across a multi-repository workspace, see
 
 `xr` is a Go CLI tool for managing multiple Git repositories as a single workspace. It uses git clones and symlinks to organize repos, and provides cross-repository search, comparison, and tree visualization.
 
-## Repository Structure
-
-```
-xr/
-├── main.go                  # Entry point, calls cmd.Execute()
-├── cmd/                     # CLI commands (Cobra-based)
-│   ├── repo/                # Repository management commands
-│   └── worktree/            # Worktree management commands
-├── internal/                # Internal packages (not exported)
-│   ├── config/              # repos.yaml loading/saving and data types
-│   ├── git/                 # Shared git command/query helpers
-│   ├── workspace/           # Workspace initialization and git operations
-│   ├── worktree/            # Worktree creation/listing/removal across repos
-│   ├── search/              # Cross-repo search (ripgrep + fallback, one file set)
-│   ├── runner/              # Cross-repo command execution (xr exec)
-│   ├── parallel/            # Ordered concurrent execution shared by --jobs
-│   ├── pathsafe/            # Check that a derived path stays inside a directory
-│   ├── structure/           # Directory tree analysis and display
-│   ├── output/              # Human/JSON output helpers and result models
-│   ├── exitcode/            # Silent exit-status errors for self-reporting commands
-│   ├── diff/                # File comparison and git history search
-│   ├── doctor/              # Environment and workspace diagnosis (xr doctor)
-│   └── shellcomp/           # Shared repository-name shell completion
-├── go.mod                   # Module: github.com/kohbis/xr, Go 1.27.1
-├── Makefile                 # Build, test, lint, release targets
-├── .golangci.yml            # Linter configuration
-├── .goreleaser.yaml         # Release automation (Homebrew + GitHub Releases)
-├── .github/workflows/
-│   ├── ci.yml               # CI: build, vet, test, lint on push/PR
-│   └── release.yml          # Release: triggered by v* tags
-└── repos.yaml.example       # Example workspace configuration
-```
-
 ## Environment Setup
 
 Prerequisites for development:
@@ -116,11 +83,9 @@ All four must pass before merging.
 
 ### Worktrees
 
-`internal/worktree` manages git worktrees for the configured repositories.
+`internal/worktree` manages git worktrees. The user-facing model is `xr worktree --help`. In code:
 
-- The unit is the pair `(repository, branch)` — git allows a branch in only one worktree.
-  There is deliberately no "task" or "group" entity; grouping is a branch-name filter.
-- Nothing is persisted in repos.yaml; `git worktree list --porcelain` is the source of truth.
+- Do not add a task or group type. The unit is `(repository, branch)`; grouping is a branch-name filter, and `git worktree list --porcelain` is the source of truth. Nothing is written to repos.yaml.
 - `Manager.PathFor` is the only place the layout `<cfg.Worktrees>/<repo.Path>/<branch>` is derived.
 - `Manager.RepoDir` resolves symlink repos to their real location before git runs.
 - Paths are validated to stay inside the worktree directory; empty parents are removed on cleanup.
@@ -133,26 +98,11 @@ Without `--config`, `CommandPath` resolves to the nearest `repos.yaml` at or abo
 
 A loaded config records its own path (`Config.Path`). `workspace` and `worktrees` are resolved relative to that file's directory through `Config.Root()`, `WorkspaceDir()` and `WorktreesDir()`; commands must go through these rather than `filepath.Abs(cfg.Workspace)`, so `xr --config other/repos.yaml ...` behaves the same from any working directory.
 
-Top-level keys:
-- `workspace` — directory holding the repositories (default `./repos`)
-- `worktrees` — directory holding git worktrees (default `./worktrees`)
-
-Repository types:
-- `clone` — remote git repo cloned into the workspace directory (default)
-- `symlink` — local path added as a symlink
-
-Type inference in `normalize()`: local paths (starting with `/` or `~`) default to `symlink`; otherwise `clone`.
+`normalize()` infers `symlink` for a source starting with `/` or `~` (otherwise `clone`), fills an empty `path` from `name`, rejects a repeated `name` or `path`, ignores unknown keys, and treats an empty `branch` as "do not check out". `workspace` defaults to `./repos`, `worktrees` to `./worktrees`.
 
 ### Output
 
-Use helpers from `internal/output` for consistent terminal formatting and machine-readable output. The package now provides:
-- ANSI-colored output helpers for human-readable CLI output
-- `SyncPrinter`, a writer-backed renderer for step-by-step progress (`Header`, `Action`, `OK`, `Skip`, `Fail`) that also records what it rendered, so the same steps can be reported as JSON
-- shared result models (`CommandResult`, `RepoResult`) for JSON/report output
-- JSON helpers (`PrintJSON`, `WriteJSONFile`) for command output and file reports
-
-Global output controls:
-- `--no-color` disables ANSI escape sequences for automation logs.
+Use `internal/output` for terminal formatting and machine-readable output: ANSI helpers, `SyncPrinter` (streams progress and records the same steps for JSON), `CommandResult` / `RepoResult`, and `PrintJSON` / `WriteJSONFile`. `--no-color` disables ANSI sequences.
 
 `internal/` packages must not write to stdout or stderr on their own — a command with `--json` has to keep stdout clean, and tests should not have to capture pipes. Give the caller the content instead, in whichever of these three shapes fits:
 
@@ -169,19 +119,11 @@ When adding/changing commands that prompt users, provide explicit non-interactiv
 - `--yes` (global) opts into destructive or confirm-required actions
 - in non-interactive mode, commands should return clear errors instead of waiting for input
 
-**Current behavior:**
-- Global `--non-interactive` and `--yes` on the root command; `internal/interactive` helpers read them via `ShouldPrompt` / `Yes`.
-- `xr repo remove`: repo name(s) and `--force` or `--yes` required when not prompting.
-- `xr repo import`: `--yes` applies without prompt; `--non-interactive` without `--yes` returns an error; `--dry-run` previews.
-- `xr repo sync`: no dirty/checkout prompts when `--non-interactive` or stdin is not a TTY; use `--allow-dirty` when appropriate. `--clone-missing` materializes repositories absent from the workspace (clone repos cloned, symlink repos linked), which is the unattended alternative to the interactive `xr init`. Sync exits non-zero when any repository fails, via `internal/exitcode` so the per-repo summary stays the only output. `--jobs`/`-j` syncs repositories concurrently via `internal/parallel`, which buffers each repository's output and flushes it in configuration order, so concurrency never reorders output. Values above 1 disable prompts, since workers cannot share stdin.
-- `xr worktree add`: prompts for repositories when `--repo` is omitted; `--non-interactive` requires `--repo`.
-- `xr worktree remove` / `prune --gone`: `--yes` confirms. Note `--force` here keeps git's meaning (discard uncommitted changes), unlike `xr repo remove --force`.
-- `xr init`: interactive only; `--non-interactive` returns an error (use `xr repo sync --clone-missing`).
-- `xr repo gitignore`: `--yes` adds the entry without prompting; without a prompt available it returns an error rather than leaving `.gitignore` untouched.
-- `xr exec`: never prompts. It runs the command directly (no shell), skips repositories missing from the workspace, and exits non-zero via `internal/exitcode` when the command failed anywhere. `--jobs` uses `internal/parallel` to buffer per-repository output and flush it in configuration order.
-- `xr search`: never prompts. `--jobs`/`-j` searches repositories concurrently through `parallel.Results`; matches and `OnRepoError` calls stay in configuration order, so `-j` changes only the speed.
-- `xr doctor`: never prompts. It diagnoses the environment and exits non-zero only when a required tool is missing or a config exists but cannot be parsed.
-- `xr diff`: never prompts. `--jobs`/`-j` applies to every mode (git diff, `file`, `pattern`, `history`); each one collects through `diff.scanRepos`, so results stay in configuration order.
+Read the flags through `internal/interactive` (`ShouldPrompt` / `Yes`), not by inspecting the flag set in each command. Per-command prompt behavior is on that command's `--help`. Constraints that are easy to break while editing:
+
+- `--jobs` above 1 cannot prompt: workers do not share stdin. Route concurrency through `internal/parallel` (below).
+- `xr init` stays interactive. The unattended bootstrap is `xr repo sync --clone-missing`.
+- `--force` does not mean the same thing everywhere: `xr repo remove --force` skips confirmation, `xr worktree remove --force` discards uncommitted changes.
 
 ### Exit status
 
@@ -194,7 +136,7 @@ Prefer a consistent automation story across commands:
 - `--report <path>` for structured file output when the command produces aggregate results (for example, selected `xr diff` modes)
 - include per-repository status and summary counts when applicable
 
-**Current behavior:** `--json` is implemented on `xr repo list`, `xr repo sync`, `xr search`, `xr exec`, `xr worktree list` / `add` / `remove` / `prune`, `xr diff file` / `pattern` / `history`, and `xr doctor`. `--report` is implemented on `xr repo sync` and those `xr diff` subcommands. `xr repo sync --json` sets `SyncOptions.Quiet` and reads per-repository outcomes from `SyncResult.Repos`, which `output.SyncPrinter` records as it prints; it also disables prompts.
+Which commands accept `--json` or `--report` is on each command's `--help`. `xr repo sync --json` sets `SyncOptions.Quiet` and reads per-repository outcomes from `SyncResult.Repos`, which `output.SyncPrinter` records as it prints; it also disables prompts.
 
 `internal/search` must return the same matches whichever engine runs. `listFiles` (built on `git.ListFiles`) is the single file set both engines search, the glob and the binary check are applied in Go rather than delegated to ripgrep, and results are sorted per repository because ripgrep answers a batch out of order. ripgrep is invoked with explicit paths, batched to stay inside the argument-size limit, and with `--field-match-separator` / `--field-context-separator` so its output parses unambiguously. When changing either engine, extend `TestSearchRepo_EnginesAgree` rather than only the engine you touched.
 
@@ -251,12 +193,7 @@ Changelog excludes commits with types `docs`, `test`, and `chore`.
 
 ## External Runtime Dependencies
 
-`xr` shells out to external tools at runtime:
-- `git` — required for `xr init`, `xr repo sync`, `xr repo import`, `xr worktree`, `xr diff`, `xr diff history`
-- `diff` — required for `xr diff file` (pre-installed on most systems)
-- `rg` (ripgrep) — optional for `xr search`; falls back to a built-in implementation if absent
-
-`internal/doctor` is where that list is checked at runtime (`xr doctor`). A tool added here should gain a check there, marked required or optional to match: only a missing required tool or an unparsable config is a failure, while a not-yet-materialized workspace and a missing optional tool are warnings that still exit 0.
+`xr` shells out to `git` and `diff` (required) and `rg` (optional; `xr search` falls back to a built-in engine). `internal/doctor` is where that list is checked (`xr doctor`). A tool added here gains a check there, marked required or optional to match: only a missing required tool or an unparsable config is a failure. A workspace that has not been materialized, and a missing optional tool, are warnings that still exit 0.
 
 ### Concurrency (`--jobs`)
 
