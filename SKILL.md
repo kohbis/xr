@@ -54,7 +54,7 @@ A source starting with `/` or `~` is a `symlink` when `type` is omitted; any oth
 
 ## Constraints
 
-**`xr exec`** runs the command directly, with no shell. Pipelines need `xr exec -- bash -c '...'`. Each repository gets `XR_REPO_NAME` and `XR_REPO_PATH`.
+**`xr exec`** runs the command directly, with no shell. Pipelines need `xr exec -- bash -c '...'`. Each repository gets `XR_REPO_NAME` and `XR_REPO_PATH`. `--fail-fast` does not start the command in repositories that have not started after one fails; with `--jobs`, repositories already running finish.
 
 **`xr search`** searches files git knows about (tracked, plus untracked that are not ignored) and skips binaries. A glob with no separator matches the file name at any depth (`*.go`); one with a separator matches the relative path (`cmd/*.go`). Results are the same whether or not `rg` is installed, and whatever `-j` is set to.
 

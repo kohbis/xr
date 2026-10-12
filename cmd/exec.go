@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/exitcode"
 	"github.com/kohbis/xr/internal/output"
@@ -11,10 +13,11 @@ import (
 )
 
 var (
-	execRepo []string
-	execTags []string
-	execJobs int
-	execJSON bool
+	execRepo     []string
+	execTags     []string
+	execJobs     int
+	execJSON     bool
+	execFailFast bool
 )
 
 var execCmd = &cobra.Command{
@@ -36,8 +39,13 @@ Exits non-zero when the command fails in any repository.
 --jobs runs several repositories at once. Output stays grouped and ordered by
 repository, but each block appears only once that repository finishes.
 
+--fail-fast does not start the command in repositories that have not started
+yet once it has failed in one. Repositories already running are left to finish,
+so with --jobs which ones are cancelled depends on timing.
+
 Examples:
   xr exec -- go test ./...
+  xr exec --fail-fast -- go test ./...
   xr exec -r api -r web -- make lint
   xr exec -t go -r api -- go test ./...
   xr exec -j 8 -- git fetch --prune
@@ -62,6 +70,7 @@ Examples:
 			RepoFilter: execRepo,
 			Jobs:       execJobs,
 			Quiet:      execJSON,
+			FailFast:   execFailFast,
 		})
 		if err != nil {
 			return err
@@ -73,6 +82,9 @@ Examples:
 			}
 		} else {
 			output.PrintActionSummary("ok", result.Ran, result.Missing, result.Failed)
+			if result.Cancelled > 0 {
+				_, _ = fmt.Println(output.Dim(fmt.Sprintf("Cancelled: %d (--fail-fast)", result.Cancelled)))
+			}
 		}
 
 		// Failures are already reported per repository.
@@ -87,12 +99,14 @@ func execResult(args []string, result *runner.Result) output.CommandResult {
 		switch {
 		case r.Missing:
 			status = "skipped"
+		case r.Cancelled:
+			status = "cancelled"
 		case r.Failed():
 			status = "failed"
 		}
-		// A skipped repository never ran, so it has no exit status to report.
+		// A repository that never ran has no exit status to report.
 		var metrics map[string]int
-		if !r.Missing {
+		if !r.Missing && !r.Cancelled {
 			metrics = map[string]int{"exit_code": r.ExitCode}
 		}
 		repos = append(repos, output.RepoResult{
@@ -106,9 +120,10 @@ func execResult(args []string, result *runner.Result) output.CommandResult {
 	return output.CommandResult{
 		Command: "exec",
 		Summary: map[string]int{
-			"ok":      result.Ran,
-			"failed":  result.Failed,
-			"skipped": result.Missing,
+			"ok":        result.Ran,
+			"failed":    result.Failed,
+			"skipped":   result.Missing,
+			"cancelled": result.Cancelled,
 		},
 		Repos: repos,
 		Data: map[string]any{
@@ -127,6 +142,7 @@ func init() {
 	execCmd.Flags().StringArrayVarP(&execTags, "tag", "t", nil, "limit execution to repos with any of these tags (repeatable)")
 	execCmd.Flags().IntVarP(&execJobs, "jobs", "j", 1, "number of repositories to run concurrently")
 	execCmd.Flags().BoolVar(&execJSON, "json", false, "output in JSON format")
+	execCmd.Flags().BoolVar(&execFailFast, "fail-fast", false, "do not start the command in further repositories after one fails")
 	cobra.CheckErr(execCmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))
 	cobra.CheckErr(execCmd.RegisterFlagCompletionFunc("tag", shellcomp.CompleteTags))
 }

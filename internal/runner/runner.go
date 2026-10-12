@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync/atomic"
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/output"
@@ -33,6 +34,10 @@ type Options struct {
 	// Quiet suppresses human-readable output. Each repository's output is
 	// captured into its RepoRun instead, for callers rendering JSON.
 	Quiet bool
+
+	// FailFast stops starting the command once it has failed in one repository.
+	// Repositories that have already started are left to finish.
+	FailFast bool
 }
 
 // RepoRun is the outcome of running the command in one repository.
@@ -47,19 +52,25 @@ type RepoRun struct {
 	// Missing reports that the repository is absent from the workspace, in which
 	// case the command was not run.
 	Missing bool `json:"missing,omitempty"`
+
+	// Cancelled reports that the command was not started because an earlier
+	// repository failed and FailFast is set.
+	Cancelled bool `json:"cancelled,omitempty"`
 }
 
-// Failed reports whether the command did not succeed in this repository.
+// Failed reports whether the command ran and did not succeed. A missing or
+// cancelled repository did not run, so it is not a failure.
 func (r RepoRun) Failed() bool {
-	return !r.Missing && (r.ExitCode != 0 || r.Error != "")
+	return !r.Missing && !r.Cancelled && (r.ExitCode != 0 || r.Error != "")
 }
 
 // Result aggregates the outcome across repositories.
 type Result struct {
-	Runs    []RepoRun
-	Ran     int
-	Failed  int
-	Missing int
+	Runs      []RepoRun
+	Ran       int
+	Failed    int
+	Missing   int
+	Cancelled int
 }
 
 // Run executes args in each configured repository under wsDir.
@@ -71,9 +82,17 @@ func Run(cfg *config.Config, wsDir string, args []string, opts Options) (*Result
 	targets := cfg.Select(opts.RepoFilter)
 
 	runs := make([]RepoRun, len(targets))
+	var stop atomic.Bool
 	parallel.Run(len(targets), opts.Jobs, os.Stdout, os.Stderr,
 		func(i int, out, errW io.Writer) {
+			if opts.FailFast && stop.Load() {
+				runs[i] = cancelledRun(targets[i], opts, out)
+				return
+			}
 			runs[i] = runRepo(targets[i], wsDir, args, opts, out, errW)
+			if opts.FailFast && runs[i].Failed() {
+				stop.Store(true)
+			}
 		})
 
 	result := &Result{Runs: runs}
@@ -81,6 +100,8 @@ func Run(cfg *config.Config, wsDir string, args []string, opts Options) (*Result
 		switch {
 		case r.Missing:
 			result.Missing++
+		case r.Cancelled:
+			result.Cancelled++
 		case r.Failed():
 			result.Failed++
 		default:
@@ -88,6 +109,17 @@ func Run(cfg *config.Config, wsDir string, args []string, opts Options) (*Result
 		}
 	}
 	return result, nil
+}
+
+// cancelledRun records a repository that was not started because fail-fast
+// already tripped. Its output matches the missing-repository skip line.
+func cancelledRun(repo config.Repository, opts Options, stdout io.Writer) RepoRun {
+	run := RepoRun{Name: repo.Name, Path: repo.Path, Cancelled: true}
+	if !opts.Quiet {
+		printHeader(stdout, repo.Name)
+		_, _ = fmt.Fprintf(stdout, "%s\n", warn("skipped: not run after an earlier failure (--fail-fast)"))
+	}
+	return run
 }
 
 // runRepo runs the command in one repository, writing human-readable progress
