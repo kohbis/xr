@@ -46,7 +46,7 @@ All errors must be checked — do not silently discard errors.
 
 ### CI
 
-CI runs on every push to `main` and on all pull requests:
+CI runs on every push to `main` and on pull requests targeting `main`:
 1. `go build ./...`
 2. `go vet ./...`
 3. `go test ./...`
@@ -183,7 +183,7 @@ The release workflow publishes:
 - GitHub Release with archives and checksums
 - Homebrew formula to `kohbis/homebrew-xr`
 
-Changelog excludes commits with types `docs`, `test`, and `chore`.
+Changelog excludes unscoped `docs:`, `test:` and `chore:` commits; scoped ones such as `test(config): ...` still appear.
 
 ## Scope & Boundaries
 
