@@ -8,6 +8,15 @@ For using the `xr` CLI as an agent tool across a multi-repository workspace, see
 
 `xr` is a Go CLI tool for managing multiple Git repositories as a single workspace. It uses git clones and symlinks to organize repos, and provides cross-repository search, comparison, and tree visualization.
 
+## Design Principles
+
+These decide whether a feature belongs in `xr` and what shape it takes. A change that departs from one should say why in its pull request.
+
+- **git and repos.yaml are the source of truth.** `xr` keeps no state of its own (no database, cache, or metadata files); what it reports is derived from git and the config on each run.
+- **Build on tools every environment has.** `xr` runs `git` and `diff` across repositories rather than reimplementing them. A tool that is not universally installed may only be optional, with a fallback that returns the same result (`rg` for `xr search`); see External Runtime Dependencies.
+- **Reach for existing mechanisms first.** Before adding a concept (a config key, an entity, a grouping), check whether tags, branch-name filters, or an existing command already express it. New concepts are allowed when they do not, but the pull request should show why.
+- **Automation is a first-class user.** A command is designed to run unattended as well as at a terminal: `--json`, exit status, and non-interactive behavior follow the conventions below.
+
 ## Environment Setup
 
 Prerequisites for development:
