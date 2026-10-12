@@ -18,6 +18,7 @@ var (
 	searchContext    int
 	searchRegex      bool
 	searchRepo       []string
+	searchTags       []string
 	searchJSON       bool
 	searchJobs       int
 )
@@ -36,6 +37,7 @@ multi-threaded.
 
 Examples:
   xr search TODO
+  xr search -t go TODO
   xr search -r project-a -g "*.go" "pattern"
   xr search -j 8 "pattern"
   xr search --json "pattern"`,
@@ -49,6 +51,7 @@ Examples:
 		if err != nil {
 			return err
 		}
+		cfg = cfg.WithTags(searchTags)
 
 		wsDir, err := cfg.WorkspaceDir()
 		if err != nil {
@@ -150,7 +153,9 @@ func init() {
 	searchCmd.Flags().IntVarP(&searchContext, "context", "C", 0, "lines of context around matches")
 	searchCmd.Flags().BoolVarP(&searchRegex, "regex", "e", false, "treat pattern as regular expression")
 	searchCmd.Flags().StringArrayVarP(&searchRepo, "repo", "r", nil, "limit search to specific repos")
+	searchCmd.Flags().StringArrayVarP(&searchTags, "tag", "t", nil, "limit search to repos with any of these tags (repeatable)")
 	searchCmd.Flags().BoolVar(&searchJSON, "json", false, "output in JSON format")
 	searchCmd.Flags().IntVarP(&searchJobs, "jobs", "j", 1, "number of repositories to search concurrently")
 	cobra.CheckErr(searchCmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))
+	cobra.CheckErr(searchCmd.RegisterFlagCompletionFunc("tag", shellcomp.CompleteTags))
 }

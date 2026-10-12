@@ -631,3 +631,132 @@ func TestSelect(t *testing.T) {
 		})
 	}
 }
+
+func TestWithTags(t *testing.T) {
+	cfg := &Config{
+		Path:      "/ws/repos.yaml",
+		Workspace: "./repos",
+		Worktrees: "./worktrees",
+		Repositories: []Repository{
+			{Name: "api", Tags: []string{"backend", "go"}},
+			{Name: "web", Tags: []string{"frontend"}},
+			{Name: "lib", Tags: []string{"go"}},
+			{Name: "docs"},
+		},
+	}
+	names := func(repos []Repository) []string {
+		out := make([]string, 0, len(repos))
+		for _, r := range repos {
+			out = append(out, r.Name)
+		}
+		return out
+	}
+
+	tests := []struct {
+		name    string
+		tags    []string
+		want    []string
+		sameCfg bool
+	}{
+		{name: "no tags", tags: nil, want: []string{"api", "web", "lib", "docs"}, sameCfg: true},
+		{name: "empty tags", tags: []string{}, want: []string{"api", "web", "lib", "docs"}, sameCfg: true},
+		{name: "single tag", tags: []string{"frontend"}, want: []string{"web"}},
+		{name: "multiple tags OR", tags: []string{"frontend", "backend"}, want: []string{"api", "web"}},
+		{name: "order preserved", tags: []string{"go"}, want: []string{"api", "lib"}},
+		{name: "unknown tag", tags: []string{"nope"}, want: []string{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := cfg.WithTags(tt.tags)
+			if tt.sameCfg && got != cfg {
+				t.Fatal("WithTags with no tags must return the same config")
+			}
+			if !tt.sameCfg && got == cfg {
+				t.Fatal("WithTags must return a copy when tags are given")
+			}
+			if got.Path != cfg.Path || got.Workspace != cfg.Workspace || got.Worktrees != cfg.Worktrees {
+				t.Fatalf("copy = path %q workspace %q worktrees %q", got.Path, got.Workspace, got.Worktrees)
+			}
+			if !slices.Equal(names(got.Repositories), tt.want) {
+				t.Fatalf("WithTags(%v) = %v, want %v", tt.tags, names(got.Repositories), tt.want)
+			}
+			if !tt.sameCfg && len(cfg.Repositories) != 4 {
+				t.Fatal("WithTags mutated the original repositories")
+			}
+		})
+	}
+}
+
+func TestLoad_Tags(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "repos.yaml")
+	content := `repositories:
+  - name: api
+    source: https://example.com/api.git
+    tags: [backend, go]
+  - name: web
+    source: https://example.com/web.git
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !slices.Equal(cfg.Repositories[0].Tags, []string{"backend", "go"}) {
+		t.Fatalf("tags = %v, want [backend go]", cfg.Repositories[0].Tags)
+	}
+	if cfg.Repositories[1].Tags != nil {
+		t.Fatalf("tags = %v, want nil", cfg.Repositories[1].Tags)
+	}
+}
+
+func TestNormalize_Tags(t *testing.T) {
+	tests := []struct {
+		name    string
+		tags    []string
+		want    []string
+		wantErr string
+	}{
+		{name: "trim", tags: []string{" go ", "backend"}, want: []string{"go", "backend"}},
+		{name: "empty", tags: []string{" "}, wantErr: `repository "api": empty tag`},
+		{name: "duplicate", tags: []string{"go", "go"}, wantErr: `repository "api": duplicate tag "go"`},
+		{name: "duplicate after trim", tags: []string{"go", " go "}, wantErr: `repository "api": duplicate tag "go"`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{Repositories: []Repository{{Name: "api", Tags: tt.tags}}}
+			got, err := normalize(cfg)
+			if tt.wantErr != "" {
+				if err == nil || err.Error() != tt.wantErr {
+					t.Fatalf("normalize() error = %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("normalize() error = %v", err)
+			}
+			if !slices.Equal(got.Repositories[0].Tags, tt.want) {
+				t.Fatalf("tags = %v, want %v", got.Repositories[0].Tags, tt.want)
+			}
+		})
+	}
+
+	t.Run("same tag on another repository", func(t *testing.T) {
+		cfg := &Config{Repositories: []Repository{
+			{Name: "api", Tags: []string{"go"}},
+			{Name: "web", Tags: []string{"go"}},
+		}}
+		got, err := normalize(cfg)
+		if err != nil {
+			t.Fatalf("normalize() error = %v", err)
+		}
+		if !slices.Equal(got.Repositories[0].Tags, []string{"go"}) || !slices.Equal(got.Repositories[1].Tags, []string{"go"}) {
+			t.Fatalf("tags = %v and %v, want go on both", got.Repositories[0].Tags, got.Repositories[1].Tags)
+		}
+	})
+}

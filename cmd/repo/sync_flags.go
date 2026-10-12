@@ -2,8 +2,9 @@ package repo
 
 import (
 	"fmt"
-	"github.com/kohbis/xr/internal/parallel"
 
+	"github.com/kohbis/xr/internal/parallel"
+	"github.com/kohbis/xr/internal/shellcomp"
 	"github.com/spf13/cobra"
 )
 
@@ -17,6 +18,7 @@ var (
 	syncJobs                  int
 	syncJSON                  bool
 	syncReport                string
+	syncTags                  []string
 )
 
 func effectiveSyncNetwork() (fetch, pull bool) {
@@ -50,4 +52,6 @@ func registerSyncFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVarP(&syncJobs, "jobs", "j", 1, "number of repositories to sync concurrently (disables prompts above 1)")
 	cmd.Flags().BoolVar(&syncJSON, "json", false, "output in JSON format (disables prompts)")
 	cmd.Flags().StringVar(&syncReport, "report", "", "write JSON report to file")
+	cmd.Flags().StringArrayVarP(&syncTags, "tag", "t", nil, "limit to repos with any of these tags (repeatable)")
+	cobra.CheckErr(cmd.RegisterFlagCompletionFunc("tag", shellcomp.CompleteTags))
 }

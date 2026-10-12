@@ -15,6 +15,7 @@ import (
 
 var (
 	diffRepo   []string
+	diffTags   []string
 	diffJSON   bool
 	diffReport string
 	diffJobs   int
@@ -32,13 +33,14 @@ Other comparison modes are subcommands:
   xr diff pattern <regex>  show where a pattern appears per repo
   xr diff history <query>  search git commit messages across repos
 
-Limit repos with --repo / -r on any diff command.
+Limit repos with --repo / -r or --tag / -t on any diff command.
 
 Examples:
   xr diff
   xr diff -- --stat
   xr diff -- --name-only
   xr diff -r project-a
+  xr diff -t backend
   xr diff file go.mod
   xr diff pattern "version" -r project-a
   xr diff history "fix:" --json`,
@@ -74,7 +76,9 @@ var diffHistoryCmd = &cobra.Command{
 
 func registerDiffRepoFlag(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVarP(&diffRepo, "repo", "r", nil, "limit to repo names")
+	cmd.Flags().StringArrayVarP(&diffTags, "tag", "t", nil, "limit to repos with any of these tags (repeatable)")
 	cobra.CheckErr(cmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))
+	cobra.CheckErr(cmd.RegisterFlagCompletionFunc("tag", shellcomp.CompleteTags))
 	cmd.Flags().IntVarP(&diffJobs, "jobs", "j", 1, "number of repositories to scan concurrently")
 }
 
@@ -93,6 +97,7 @@ func loadDiffWorkspace() (*config.Config, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	cfg = cfg.WithTags(diffTags)
 	wsDir, err := cfg.WorkspaceDir()
 	if err != nil {
 		return nil, "", err

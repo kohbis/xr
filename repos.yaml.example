@@ -8,6 +8,7 @@ repositories:
     source: git@github.com:user/project-a.git
     branch: main
     path: project-a          # relative path within workspace
+    tags: [backend, go]      # optional; -t keeps repos that have any of these
 
   - name: project-b
     source: git@github.com:user/project-b.git

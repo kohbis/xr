@@ -22,7 +22,7 @@ Repositories are declared in `repos.yaml` and materialized under one workspace d
 | `clone` | `git clone` (default) | remote URL |
 | `symlink` | symlink to a local path | repo already on disk |
 
-A source starting with `/` or `~` is a `symlink` when `type` is omitted; any other source is a `clone`. `name` and `path` must be unique (`path` defaults to `name`). Unknown keys are ignored. Omit `branch` to leave that repository's checkout unchanged.
+A source starting with `/` or `~` is a `symlink` when `type` is omitted; any other source is a `clone`. `name` and `path` must be unique (`path` defaults to `name`). Unknown keys are ignored. Omit `branch` to leave that repository's checkout unchanged. A repository may set optional `tags`; `-t` on `exec`, `search`, `diff`, `repo list`, and `repo sync` keeps repositories that have any of the given tags, and together with `-r` or sync's repo names both filters must match.
 
 `workspace` and `worktrees` are resolved relative to the config file. Without `--config`, xr uses the nearest `repos.yaml` at or above the working directory, including from inside a managed repository. `xr init` is the exception: it takes `-f` / `--file`, not `--config`.
 
