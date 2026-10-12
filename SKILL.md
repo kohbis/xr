@@ -3,8 +3,10 @@ name: xr
 description: >
   Multi-repo workspace CLI. Use this skill whenever the user mentions "xr", or when
   a task involves cross-repository search, diff, comparison, tree visualization,
-  adding/removing/listing/syncing workspace repositories, or managing .gitignore
-  for a multi-repo workspace. Also use when repos.yaml is referenced.
+  running a command in every repository, git worktrees across repositories,
+  adding/removing/listing/syncing workspace repositories, checking the workspace
+  setup, or managing .gitignore for a multi-repo workspace. Also use when
+  repos.yaml is referenced.
 ---
 
 # xr — Agent Skills Reference
