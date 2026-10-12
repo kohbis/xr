@@ -1,6 +1,7 @@
 package shellcomp
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/kohbis/xr/internal/config"
@@ -36,4 +37,56 @@ func RepoNameCandidates(cfgPath string, exclude []string, prefix string) []strin
 		}
 	}
 	return names
+}
+
+// CompleteTags completes the --tag flag with distinct tags from repos.yaml.
+func CompleteTags(cmd *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	tags := TagCandidates(config.CommandPath(cmd), givenTags(cmd), toComplete)
+	if len(tags) == 0 {
+		return nil, cobra.ShellCompDirectiveDefault
+	}
+	return tags, cobra.ShellCompDirectiveNoFileComp
+}
+
+// givenTags returns the tags already passed to this command's --tag flag.
+func givenTags(cmd *cobra.Command) []string {
+	if cmd == nil {
+		return nil
+	}
+	tags, err := cmd.Flags().GetStringArray("tag")
+	if err != nil {
+		return nil
+	}
+	return tags
+}
+
+// TagCandidates returns distinct tags from the config at cfgPath that match
+// prefix and are not listed in exclude. The result is sorted.
+func TagCandidates(cfgPath string, exclude []string, prefix string) []string {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return nil
+	}
+	excludeSet := make(map[string]struct{}, len(exclude))
+	for _, tag := range exclude {
+		excludeSet[tag] = struct{}{}
+	}
+	seen := make(map[string]struct{})
+	var tags []string
+	for _, r := range cfg.Repositories {
+		for _, tag := range r.Tags {
+			if _, ok := seen[tag]; ok {
+				continue
+			}
+			seen[tag] = struct{}{}
+			if _, skip := excludeSet[tag]; skip {
+				continue
+			}
+			if strings.HasPrefix(tag, prefix) {
+				tags = append(tags, tag)
+			}
+		}
+	}
+	slices.Sort(tags)
+	return tags
 }

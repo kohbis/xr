@@ -12,6 +12,7 @@ import (
 
 var (
 	execRepo []string
+	execTags []string
 	execJobs int
 	execJSON bool
 )
@@ -38,6 +39,7 @@ repository, but each block appears only once that repository finishes.
 Examples:
   xr exec -- go test ./...
   xr exec -r api -r web -- make lint
+  xr exec -t go -r api -- go test ./...
   xr exec -j 8 -- git fetch --prune
   xr exec --json -- git status --porcelain`,
 	Args: cobra.MinimumNArgs(1),
@@ -50,6 +52,7 @@ Examples:
 		if err != nil {
 			return err
 		}
+		cfg = cfg.WithTags(execTags)
 		wsDir, err := cfg.WorkspaceDir()
 		if err != nil {
 			return err
@@ -121,7 +124,9 @@ func init() {
 	// passed through rather than claimed by xr.
 	execCmd.Flags().SetInterspersed(false)
 	execCmd.Flags().StringArrayVarP(&execRepo, "repo", "r", nil, "limit execution to specific repos")
+	execCmd.Flags().StringArrayVarP(&execTags, "tag", "t", nil, "limit execution to repos with any of these tags (repeatable)")
 	execCmd.Flags().IntVarP(&execJobs, "jobs", "j", 1, "number of repositories to run concurrently")
 	execCmd.Flags().BoolVar(&execJSON, "json", false, "output in JSON format")
 	cobra.CheckErr(execCmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))
+	cobra.CheckErr(execCmd.RegisterFlagCompletionFunc("tag", shellcomp.CompleteTags))
 }

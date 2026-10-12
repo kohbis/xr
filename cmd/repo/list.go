@@ -21,6 +21,7 @@ const (
 var (
 	listJSON bool
 	listRepo []string
+	listTags []string
 )
 
 var listCmd = &cobra.Command{
@@ -34,12 +35,14 @@ repos.yaml order regardless of the order the flags are given in.
 Examples:
   xr repo list
   xr repo list -r api -r web
+  xr repo list -t go
   xr repo list --json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.LoadCommand(cmd)
 		if err != nil {
 			return err
 		}
+		cfg = cfg.WithTags(listTags)
 		wsDir, err := cfg.WorkspaceDir()
 		if err != nil {
 			return fmt.Errorf("resolving workspace path: %w", err)
@@ -55,16 +58,18 @@ Examples:
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		if _, err := fmt.Fprintln(w, "NAME\tTYPE\tBRANCH\tCURRENT\tSTATUS\tPATH\tSOURCE"); err != nil {
+		if _, err := fmt.Fprintln(w, "NAME\tTYPE\tTAGS\tBRANCH\tCURRENT\tSTATUS\tPATH\tSOURCE"); err != nil {
 			return err
 		}
 		for _, r := range repos {
 			repoPath := filepath.Join(wsDir, r.Path)
 			current, status := repoRuntimeStatus(repoPath)
 			source := formatSource(cfg.Path, r.Source)
+			tags := strings.Join(r.Tags, ",")
 			rows = append(rows, map[string]string{
 				"name":    r.Name,
 				"type":    string(r.Type),
+				"tags":    tags,
 				"branch":  r.Branch,
 				"current": current,
 				"status":  status,
@@ -73,7 +78,7 @@ Examples:
 			})
 			result.Repos = append(result.Repos, repoListResult(r.Name, repoPath, status))
 
-			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Name, r.Type, r.Branch, current, status, r.Path, source); err != nil {
+			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Name, r.Type, tags, r.Branch, current, status, r.Path, source); err != nil {
 				return err
 			}
 		}
@@ -141,5 +146,7 @@ func init() {
 	Cmd.AddCommand(listCmd)
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "output in JSON format")
 	listCmd.Flags().StringArrayVarP(&listRepo, "repo", "r", nil, "limit to specific repos (repeatable)")
+	listCmd.Flags().StringArrayVarP(&listTags, "tag", "t", nil, "limit to repos with any of these tags (repeatable)")
 	cobra.CheckErr(listCmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))
+	cobra.CheckErr(listCmd.RegisterFlagCompletionFunc("tag", shellcomp.CompleteTags))
 }

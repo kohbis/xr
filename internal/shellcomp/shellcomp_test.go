@@ -3,6 +3,7 @@ package shellcomp
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -45,6 +46,54 @@ repositories:
 
 	t.Run("missing config", func(t *testing.T) {
 		got := RepoNameCandidates(filepath.Join(dir, "nope.yaml"), nil, "")
+		if len(got) != 0 {
+			t.Fatalf("got %v, want empty", got)
+		}
+	})
+}
+
+func TestTagCandidates(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "repos.yaml")
+	content := `workspace: ./repos
+repositories:
+  - name: alpha
+    source: https://example.com/a.git
+    tags: [go, backend]
+  - name: beta
+    source: https://example.com/b.git
+    tags: [frontend, go]
+  - name: alphonso
+    source: https://example.com/c.git
+    tags: [docs]
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name    string
+		exclude []string
+		prefix  string
+		want    []string
+	}{
+		{name: "distinct and sorted", want: []string{"backend", "docs", "frontend", "go"}},
+		{name: "prefix", prefix: "f", want: []string{"frontend"}},
+		{name: "exclude", exclude: []string{"go"}, want: []string{"backend", "docs", "frontend"}},
+		{name: "exclude and prefix", exclude: []string{"go"}, prefix: "g"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := TagCandidates(cfgPath, tt.exclude, tt.prefix)
+			if !slices.Equal(got, tt.want) {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+	t.Run("missing config", func(t *testing.T) {
+		got := TagCandidates(filepath.Join(dir, "nope.yaml"), nil, "")
 		if len(got) != 0 {
 			t.Fatalf("got %v, want empty", got)
 		}

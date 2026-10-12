@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -22,6 +23,7 @@ type Repository struct {
 	Branch string   `yaml:"branch,omitempty"`
 	Path   string   `yaml:"path"`
 	Type   RepoType `yaml:"type,omitempty"`
+	Tags   []string `yaml:"tags,omitempty"`
 }
 
 type Config struct {
@@ -146,6 +148,38 @@ func (c *Config) Select(names []string) []Repository {
 	return selected
 }
 
+// WithTags returns c when tags is empty. Otherwise it returns a shallow copy
+// (Path, Workspace, and Worktrees kept) whose Repositories holds only those
+// matching any tag, in repos.yaml order. An unknown tag matches nothing.
+// The result is a view for selecting repositories and must never be passed to Save.
+func (c *Config) WithTags(tags []string) *Config {
+	if len(tags) == 0 {
+		return c
+	}
+	want := make(map[string]struct{}, len(tags))
+	for _, tag := range tags {
+		want[tag] = struct{}{}
+	}
+	selected := make([]Repository, 0, len(c.Repositories))
+	for _, r := range c.Repositories {
+		if repoHasTag(r.Tags, want) {
+			selected = append(selected, r)
+		}
+	}
+	out := *c
+	out.Repositories = selected
+	return &out
+}
+
+func repoHasTag(tags []string, want map[string]struct{}) bool {
+	for _, tag := range tags {
+		if _, ok := want[tag]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *Repository) IsSymlink() bool {
 	return r.Type == RepoTypeSymlink
 }
@@ -204,6 +238,27 @@ func normalize(cfg *Config) (*Config, error) {
 		if repo.Path == "" {
 			cfg.Repositories[i].Path = repo.Name
 		}
+	}
+
+	for i := range cfg.Repositories {
+		repo := &cfg.Repositories[i]
+		if len(repo.Tags) == 0 {
+			continue
+		}
+		seenTags := make(map[string]struct{}, len(repo.Tags))
+		trimmed := make([]string, 0, len(repo.Tags))
+		for _, tag := range repo.Tags {
+			tag = strings.TrimSpace(tag)
+			if tag == "" {
+				return nil, fmt.Errorf("repository %q: empty tag", repo.Name)
+			}
+			if _, ok := seenTags[tag]; ok {
+				return nil, fmt.Errorf("repository %q: duplicate tag %q", repo.Name, tag)
+			}
+			seenTags[tag] = struct{}{}
+			trimmed = append(trimmed, tag)
+		}
+		repo.Tags = trimmed
 	}
 
 	seenNames := make(map[string]struct{}, len(cfg.Repositories))

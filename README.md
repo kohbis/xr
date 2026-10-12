@@ -48,6 +48,7 @@ repositories:
   - name: project-a
     source: git@github.com:user/project-a.git
     branch: main
+    tags: [backend, go]
 
   - name: local-lib
     source: /path/to/local-lib  # local path -> symlink

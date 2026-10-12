@@ -51,6 +51,9 @@ Examples:
   # Switch branches to match repos.yaml
   xr repo sync
 
+  # Only repositories tagged backend
+  xr repo sync -t backend
+
   # Preview without changes
   xr repo sync --dry-run
 
@@ -85,6 +88,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	cfg = cfg.WithTags(syncTags)
 
 	if !syncJSON {
 		if syncDryRun {

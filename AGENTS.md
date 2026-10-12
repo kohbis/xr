@@ -98,7 +98,7 @@ Without `--config`, `CommandPath` resolves to the nearest `repos.yaml` at or abo
 
 A loaded config records its own path (`Config.Path`). `workspace` and `worktrees` are resolved relative to that file's directory through `Config.Root()`, `WorkspaceDir()` and `WorktreesDir()`; commands must go through these rather than `filepath.Abs(cfg.Workspace)`, so `xr --config other/repos.yaml ...` behaves the same from any working directory.
 
-`normalize()` infers `symlink` for a source starting with `/` or `~` (otherwise `clone`), fills an empty `path` from `name`, rejects a repeated `name` or `path`, ignores unknown keys, and treats an empty `branch` as "do not check out". `workspace` defaults to `./repos`, `worktrees` to `./worktrees`.
+`normalize()` infers `symlink` for a source starting with `/` or `~` (otherwise `clone`), fills an empty `path` from `name`, rejects a repeated `name` or `path`, ignores unknown keys, and treats an empty `branch` as "do not check out". `workspace` defaults to `./repos`, `worktrees` to `./worktrees`. `Config.WithTags` returns a view for selecting repositories — the same config when no tags are given, otherwise a shallow copy of those matching any tag — and must never be passed to `config.Save`; `normalize()` trims each tag and rejects an empty tag or a tag repeated within one repository.
 
 ### Output
 
