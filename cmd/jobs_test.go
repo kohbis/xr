@@ -26,7 +26,7 @@ func TestJobsFlagRejectedBelowOne(t *testing.T) {
 		{
 			name: "diff",
 			set:  func(n int) { diffJobs = n },
-			run:  func() error { _, _, err := loadDiffWorkspace(); return err },
+			run:  func() error { _, _, _, err := loadDiffWorkspace(); return err },
 		},
 	}
 

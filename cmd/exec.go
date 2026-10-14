@@ -18,6 +18,7 @@ var (
 	execJobs     int
 	execJSON     bool
 	execFailFast bool
+	execWorktree string
 )
 
 var execCmd = &cobra.Command{
@@ -34,6 +35,12 @@ unchanged. Use an explicit shell for pipelines or globbing:
 Each repository runs with XR_REPO_NAME and XR_REPO_PATH set in the environment.
 Repositories missing from the workspace are skipped, not failed.
 
+--worktree runs the command in worktrees instead of the workspace checkouts:
+those of the selected repositories whose branch matches the glob, as listed by
+'xr worktree list -b'. Each worktree is reported as <repo>@<branch>, which is
+also what XR_REPO_NAME carries; XR_REPO_PATH is the worktree directory. -r and
+-t still choose the repositories.
+
 Exits non-zero when the command fails in any repository.
 
 --jobs runs several repositories at once. Output stays grouped and ordered by
@@ -49,6 +56,7 @@ Examples:
   xr exec -r api -r web -- make lint
   xr exec -t go -r api -- go test ./...
   xr exec -j 8 -- git fetch --prune
+  xr exec --worktree 'feat-x*' -- go test ./...
   xr exec --json -- git status --porcelain`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -61,13 +69,13 @@ Examples:
 			return err
 		}
 		cfg = cfg.WithTags(execTags)
-		wsDir, err := cfg.WorkspaceDir()
+		cfg, wsDir, repoFilter, err := resolveTargets(cfg, execRepo, execWorktree)
 		if err != nil {
 			return err
 		}
 
 		result, err := runner.Run(cfg, wsDir, args, runner.Options{
-			RepoFilter: execRepo,
+			RepoFilter: repoFilter,
 			Jobs:       execJobs,
 			Quiet:      execJSON,
 			FailFast:   execFailFast,
@@ -143,6 +151,7 @@ func init() {
 	execCmd.Flags().IntVarP(&execJobs, "jobs", "j", 1, "number of repositories to run concurrently")
 	execCmd.Flags().BoolVar(&execJSON, "json", false, "output in JSON format")
 	execCmd.Flags().BoolVar(&execFailFast, "fail-fast", false, "do not start the command in further repositories after one fails")
+	registerWorktreeFlag(execCmd, &execWorktree, "run")
 	cobra.CheckErr(execCmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))
 	cobra.CheckErr(execCmd.RegisterFlagCompletionFunc("tag", shellcomp.CompleteTags))
 }

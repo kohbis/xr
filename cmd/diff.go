@@ -14,11 +14,12 @@ import (
 )
 
 var (
-	diffRepo   []string
-	diffTags   []string
-	diffJSON   bool
-	diffReport string
-	diffJobs   int
+	diffRepo     []string
+	diffTags     []string
+	diffJSON     bool
+	diffReport   string
+	diffJobs     int
+	diffWorktree string
 )
 
 var diffCmd = &cobra.Command{
@@ -33,7 +34,10 @@ Other comparison modes are subcommands:
   xr diff pattern <regex>  show where a pattern appears per repo
   xr diff history <query>  search git commit messages across repos
 
-Limit repos with --repo / -r or --tag / -t on any diff command.
+Limit repos with --repo / -r or --tag / -t on any diff command. --worktree
+runs the mode in worktrees instead of the workspace checkouts: those of the
+selected repositories whose branch matches the glob, as listed by
+'xr worktree list -b'. Each worktree is reported as <repo>@<branch>.
 
 Examples:
   xr diff
@@ -41,6 +45,7 @@ Examples:
   xr diff -- --name-only
   xr diff -r project-a
   xr diff -t backend
+  xr diff --worktree 'feat-x*' -- --stat
   xr diff file go.mod
   xr diff pattern "version" -r project-a
   xr diff history "fix:" --json`,
@@ -80,6 +85,7 @@ func registerDiffRepoFlag(cmd *cobra.Command) {
 	cobra.CheckErr(cmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))
 	cobra.CheckErr(cmd.RegisterFlagCompletionFunc("tag", shellcomp.CompleteTags))
 	cmd.Flags().IntVarP(&diffJobs, "jobs", "j", 1, "number of repositories to scan concurrently")
+	registerWorktreeFlag(cmd, &diffWorktree, "scan")
 }
 
 func registerDiffOutputFlags(cmd *cobra.Command) {
@@ -88,21 +94,18 @@ func registerDiffOutputFlags(cmd *cobra.Command) {
 }
 
 // loadDiffWorkspace also validates --jobs, since every diff mode goes through
-// it before scanning repositories.
-func loadDiffWorkspace() (*config.Config, string, error) {
+// it before scanning repositories. The returned filter is what the diff
+// functions apply as --repo: with --worktree it is already applied.
+func loadDiffWorkspace() (*config.Config, string, []string, error) {
 	if err := parallel.ValidateJobs(diffJobs); err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	cfg, err := config.LoadCommand(rootCmd)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	cfg = cfg.WithTags(diffTags)
-	wsDir, err := cfg.WorkspaceDir()
-	if err != nil {
-		return nil, "", err
-	}
-	return cfg, wsDir, nil
+	return resolveTargets(cfg, diffRepo, diffWorktree)
 }
 
 // scanRepoResult classifies one repository of a diff scan. okStatus is the
@@ -140,12 +143,12 @@ func runDiffGit(cmd *cobra.Command, args []string) error {
 	if diffJSON || diffReport != "" {
 		return fmt.Errorf("--json/--report is not supported for git diff mode")
 	}
-	cfg, wsDir, err := loadDiffWorkspace()
+	cfg, wsDir, repoFilter, err := loadDiffWorkspace()
 	if err != nil {
 		return err
 	}
 	failed := 0
-	for _, r := range diff.GitDiff(cfg, wsDir, diffRepo, args, diffJobs) {
+	for _, r := range diff.GitDiff(cfg, wsDir, repoFilter, args, diffJobs) {
 		output.PrintRepoHeader(r.Repo)
 		fmt.Print(r.Output)
 		if r.Error != "" {
@@ -157,12 +160,12 @@ func runDiffGit(cmd *cobra.Command, args []string) error {
 }
 
 func runDiffFile(path string) error {
-	cfg, wsDir, err := loadDiffWorkspace()
+	cfg, wsDir, repoFilter, err := loadDiffWorkspace()
 	if err != nil {
 		return err
 	}
 
-	comparisons, err := diff.CompareFile(cfg, wsDir, path, diffRepo, diffJobs)
+	comparisons, err := diff.CompareFile(cfg, wsDir, path, repoFilter, diffJobs)
 	if err != nil {
 		return fmt.Errorf("comparing files: %w", err)
 	}
@@ -200,12 +203,12 @@ func runDiffFile(path string) error {
 }
 
 func runDiffPattern(cmd *cobra.Command, pattern string) error {
-	cfg, wsDir, err := loadDiffWorkspace()
+	cfg, wsDir, repoFilter, err := loadDiffWorkspace()
 	if err != nil {
 		return err
 	}
 
-	results, err := diff.SearchPattern(cfg, wsDir, pattern, diffRepo, diffJobs)
+	results, err := diff.SearchPattern(cfg, wsDir, pattern, repoFilter, diffJobs)
 	if err != nil {
 		return fmt.Errorf("searching pattern: %w", err)
 	}
@@ -255,12 +258,12 @@ func runDiffPattern(cmd *cobra.Command, pattern string) error {
 }
 
 func runDiffHistory(cmd *cobra.Command, query string) error {
-	cfg, wsDir, err := loadDiffWorkspace()
+	cfg, wsDir, repoFilter, err := loadDiffWorkspace()
 	if err != nil {
 		return err
 	}
 
-	history, err := diff.SearchHistoryResults(cfg, wsDir, query, diffRepo, diffJobs)
+	history, err := diff.SearchHistoryResults(cfg, wsDir, query, repoFilter, diffJobs)
 	if err != nil {
 		return err
 	}
