@@ -3,6 +3,7 @@ package doctor
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -170,6 +171,235 @@ repositories:
 			t.Errorf("report.Failed = %d, want 0", report.Failed)
 		}
 	})
+}
+
+// initGitRepo creates a git repository with one commit on branch main and an
+// origin remote pointing at remote.
+func initGitRepo(t *testing.T, dir, remote string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "init", "-b", "main")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("git init unavailable: %v\n%s", err, out)
+	}
+	runGit(t, dir, "config", "user.email", "xr@test")
+	runGit(t, dir, "config", "user.name", "xr")
+	if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte("hello\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "f.txt")
+	runGit(t, dir, "commit", "-m", "init", "--no-gpg-sign")
+	if remote != "" {
+		runGit(t, dir, "remote", "add", "origin", remote)
+	}
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v in %s: %v\n%s", args, dir, err, out)
+	}
+}
+
+func issueDetails(c Check) []string {
+	details := make([]string, 0, len(c.Issues))
+	for _, i := range c.Issues {
+		details = append(details, i.Repo+": "+i.Detail)
+	}
+	return details
+}
+
+func TestRun_RepositoriesCheck(t *testing.T) {
+	const remote = "https://example.com/alpha.git"
+
+	t.Run("matching clone is ok", func(t *testing.T) {
+		stubLookPath(t)
+		dir := t.TempDir()
+		cfgPath := writeConfig(t, dir, "workspace: ./repos\nrepositories:\n  - name: alpha\n    source: "+remote+"\n    branch: main\n")
+		initGitRepo(t, filepath.Join(dir, "repos", "alpha"), remote)
+
+		report := Run(cfgPath)
+		got := checkByName(t, report, "repositories")
+		if got.Status != StatusOK {
+			t.Errorf("repositories check = %q %v, want %q", got.Status, issueDetails(got), StatusOK)
+		}
+		if report.Warnings != 0 {
+			t.Errorf("report.Warnings = %d, want 0", report.Warnings)
+		}
+	})
+
+	t.Run("nothing present is ok and does not consult git", func(t *testing.T) {
+		stubLookPath(t)
+		dir := t.TempDir()
+		cfgPath := writeConfig(t, dir, "workspace: ./repos\nrepositories:\n  - name: alpha\n    source: "+remote+"\n")
+
+		got := checkByName(t, Run(cfgPath), "repositories")
+		if got.Status != StatusOK || len(got.Issues) != 0 {
+			t.Errorf("repositories check = %+v, want ok without issues", got)
+		}
+	})
+
+	tests := []struct {
+		name       string
+		config     string
+		setup      func(t *testing.T, dir string)
+		wantDetail string
+	}{
+		{
+			name:   "directory that is not a git repository",
+			config: "  - name: alpha\n    source: " + remote + "\n",
+			setup: func(t *testing.T, dir string) {
+				if err := os.MkdirAll(filepath.Join(dir, "repos", "alpha"), 0755); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantDetail: "not a git repository",
+		},
+		{
+			name:   "checkout on another branch",
+			config: "  - name: alpha\n    source: " + remote + "\n    branch: main\n",
+			setup: func(t *testing.T, dir string) {
+				repo := filepath.Join(dir, "repos", "alpha")
+				initGitRepo(t, repo, remote)
+				runGit(t, repo, "switch", "-c", "feature")
+			},
+			wantDetail: "on branch feature, repos.yaml says main",
+		},
+		{
+			name:   "detached HEAD",
+			config: "  - name: alpha\n    source: " + remote + "\n    branch: main\n",
+			setup: func(t *testing.T, dir string) {
+				repo := filepath.Join(dir, "repos", "alpha")
+				initGitRepo(t, repo, remote)
+				runGit(t, repo, "switch", "--detach")
+			},
+			wantDetail: "detached HEAD, repos.yaml says main",
+		},
+		{
+			name:   "origin differs from source",
+			config: "  - name: alpha\n    source: " + remote + "\n",
+			setup: func(t *testing.T, dir string) {
+				initGitRepo(t, filepath.Join(dir, "repos", "alpha"), "https://example.com/other.git")
+			},
+			wantDetail: "origin is https://example.com/other.git, source is " + remote,
+		},
+		{
+			name:   "clone without origin",
+			config: "  - name: alpha\n    source: " + remote + "\n",
+			setup: func(t *testing.T, dir string) {
+				initGitRepo(t, filepath.Join(dir, "repos", "alpha"), "")
+			},
+			wantDetail: "no origin remote",
+		},
+		{
+			name:   "symlink pointing elsewhere",
+			config: "  - name: alpha\n    source: SRC/alpha\n    type: symlink\n",
+			setup: func(t *testing.T, dir string) {
+				initGitRepo(t, filepath.Join(dir, "src", "alpha"), remote)
+				initGitRepo(t, filepath.Join(dir, "src", "other"), remote)
+				if err := os.MkdirAll(filepath.Join(dir, "repos"), 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(filepath.Join(dir, "src", "other"), filepath.Join(dir, "repos", "alpha")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantDetail: "links to ",
+		},
+		{
+			name:   "dangling symlink",
+			config: "  - name: alpha\n    source: SRC/alpha\n    type: symlink\n",
+			setup: func(t *testing.T, dir string) {
+				if err := os.MkdirAll(filepath.Join(dir, "repos"), 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(filepath.Join(dir, "src", "alpha"), filepath.Join(dir, "repos", "alpha")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantDetail: "symlink target does not exist",
+		},
+		{
+			name:   "symlink entry materialized as a directory",
+			config: "  - name: alpha\n    source: SRC/alpha\n    type: symlink\n",
+			setup: func(t *testing.T, dir string) {
+				initGitRepo(t, filepath.Join(dir, "repos", "alpha"), remote)
+			},
+			wantDetail: "is a directory, but type is symlink",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stubLookPath(t)
+			dir := t.TempDir()
+			tt.setup(t, dir)
+			cfg := strings.ReplaceAll(tt.config, "SRC", filepath.Join(dir, "src"))
+			cfgPath := writeConfig(t, dir, "workspace: ./repos\nrepositories:\n"+cfg)
+
+			report := Run(cfgPath)
+			got := checkByName(t, report, "repositories")
+
+			if got.Status != StatusWarning {
+				t.Errorf("repositories check = %q, want %q", got.Status, StatusWarning)
+			}
+			if !strings.Contains(strings.Join(issueDetails(got), "\n"), tt.wantDetail) {
+				t.Errorf("issues = %v, want one containing %q", issueDetails(got), tt.wantDetail)
+			}
+			for _, i := range got.Issues {
+				if i.Repo != "alpha" {
+					t.Errorf("issue for %q, want alpha", i.Repo)
+				}
+			}
+			// Drift is reported, not failed: commands still work on the repository.
+			if report.Failed != 0 {
+				t.Errorf("report.Failed = %d, want 0", report.Failed)
+			}
+		})
+	}
+}
+
+func TestRun_RepositoriesCheck_SymlinkMatches(t *testing.T) {
+	const remote = "https://example.com/alpha.git"
+	stubLookPath(t)
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src", "alpha")
+	initGitRepo(t, src, remote)
+	if err := os.MkdirAll(filepath.Join(dir, "repos"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(src, filepath.Join(dir, "repos", "alpha")); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := writeConfig(t, dir, "workspace: ./repos\nrepositories:\n  - name: alpha\n    source: "+src+"\n    branch: main\n")
+
+	got := checkByName(t, Run(cfgPath), "repositories")
+	if got.Status != StatusOK {
+		t.Errorf("repositories check = %q %v, want %q", got.Status, issueDetails(got), StatusOK)
+	}
+}
+
+func TestSameRemote(t *testing.T) {
+	tests := []struct {
+		a, b string
+		want bool
+	}{
+		{"https://example.com/a.git", "https://example.com/a", true},
+		{"https://example.com/a/", "https://example.com/a", true},
+		{" https://example.com/a.git\n", "https://example.com/a", true},
+		{"git@example.com:o/a.git", "https://example.com/o/a.git", false},
+		{"https://example.com/a", "https://example.com/b", false},
+	}
+	for _, tt := range tests {
+		if got := sameRemote(tt.a, tt.b); got != tt.want {
+			t.Errorf("sameRemote(%q, %q) = %v, want %v", tt.a, tt.b, got, tt.want)
+		}
+	}
 }
 
 func TestJoinLimit(t *testing.T) {

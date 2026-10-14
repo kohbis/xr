@@ -202,7 +202,7 @@ Changelog excludes unscoped `docs:`, `test:` and `chore:` commits; scoped ones s
 
 ## External Runtime Dependencies
 
-`xr` shells out to `git` and `diff` (required) and `rg` (optional; `xr search` falls back to a built-in engine). `internal/doctor` is where that list is checked (`xr doctor`). A tool added here gains a check there, marked required or optional to match: only a missing required tool or an unparsable config is a failure. A workspace that has not been materialized, and a missing optional tool, are warnings that still exit 0.
+`xr` shells out to `git` and `diff` (required) and `rg` (optional; `xr search` falls back to a built-in engine). `internal/doctor` is where that list is checked (`xr doctor`). A tool added here gains a check there, marked required or optional to match: only a missing required tool or an unparsable config is a failure. A workspace that has not been materialized, a missing optional tool, and a repository that drifted from its repos.yaml entry (`repositoriesCheck`: branch, `origin` URL, symlink target, not a git repository) are warnings that still exit 0 — the commands keep working on such a repository, so doctor reports the drift rather than gating on it. Per-repository findings go in `Check.Issues`, not in `Detail`.
 
 ### Concurrency (`--jobs`)
 

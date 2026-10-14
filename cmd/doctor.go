@@ -21,11 +21,21 @@ var doctorCmd = &cobra.Command{
 	GroupID: "meta",
 	Long: `Check that the environment xr depends on is in place: the external tools it
 shells out to (git, diff, and optionally ripgrep), the repos.yaml it would use,
-and whether the workspace has been materialized.
+whether the workspace has been materialized, and whether the repositories in
+it still match their repos.yaml entries.
+
+The repositories check reports drift that the other commands only hint at: a
+symlink that points elsewhere or at a path that no longer exists, a clone whose
+origin differs from source, a directory that is not a git repository, and a
+checkout on another branch than the configured one (what 'xr repo sync' would
+switch). The branch comparison is exact; origin and source are compared
+ignoring a trailing slash or .git, but an ssh and an https URL for the same
+repository count as different.
 
 Exits non-zero when something is broken — a required tool missing from PATH, or
-a repos.yaml that cannot be read. A workspace that has not been created yet, or
-a missing ripgrep, is a warning and exits 0, because commands still work.
+a repos.yaml that cannot be read. A workspace that has not been created yet, a
+missing ripgrep, or a repository that drifted from repos.yaml, is a warning and
+exits 0, because commands still work.
 
 Examples:
   xr doctor
@@ -58,6 +68,16 @@ Examples:
 			if c.Hint != "" {
 				if _, err := fmt.Fprintf(w, "\t\t%s\n", output.Dim("→ "+c.Hint)); err != nil {
 					return err
+				}
+			}
+			for _, issue := range c.Issues {
+				if _, err := fmt.Fprintf(w, "\t  %s\t%s\n", issue.Repo, issue.Detail); err != nil {
+					return err
+				}
+				if issue.Hint != "" {
+					if _, err := fmt.Fprintf(w, "\t\t%s\n", output.Dim("→ "+issue.Hint)); err != nil {
+						return err
+					}
 				}
 			}
 		}

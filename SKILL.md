@@ -41,7 +41,7 @@ A source starting with `/` or `~` is a `symlink` when `type` is omitted; any oth
 | Worktrees | `xr worktree` |
 | Directory layout | `xr tree` |
 | Ignore the workspace directory | `xr repo gitignore` |
-| Check tools and config | `xr doctor` |
+| Check tools, config, and drift from repos.yaml | `xr doctor` |
 | Another workspace | `xr --config PATH <command>` |
 
 ## Running unattended
@@ -50,7 +50,7 @@ A source starting with `/` or `~` is a `symlink` when `type` is omitted; any oth
 - `--non-interactive` fails instead of prompting. `--yes` confirms writes and destructive actions (`repo import`, `repo remove`, `repo gitignore`, `worktree remove`, `worktree prune --gone`).
 - `xr repo sync` prompts on a dirty checkout unless `--allow-dirty` or `--yes` is set. `--jobs` above 1 cannot prompt, so pass one of those or dirty repositories are skipped.
 - Commands that report per-repository results (`repo sync`, `exec`, `worktree add` / `remove` / `prune`, `search`, `diff pattern`) exit non-zero when any repository failed. A repository missing from the workspace is skipped, not failed. `repo list` always exits 0.
-- `xr doctor` exits non-zero only when a required tool is missing or `repos.yaml` cannot be parsed. A workspace that has not been cloned, a missing `rg`, or no config at all are warnings and exit 0.
+- `xr doctor` exits non-zero only when a required tool is missing or `repos.yaml` cannot be parsed. A workspace that has not been cloned, a missing `rg`, no config at all, or a repository that drifted from its `repos.yaml` entry (other branch, other `origin`, symlink elsewhere or dangling, not a git repository) are warnings and exit 0. Drift is listed per repository under the `repositories` check (`issues` in `--json`).
 
 ## Constraints
 
