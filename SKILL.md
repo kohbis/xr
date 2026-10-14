@@ -39,6 +39,7 @@ A source starting with `/` or `~` is a `symlink` when `type` is omitted; any oth
 | Search file contents | `xr search PATTERN` |
 | git diff / a file / commit messages | `xr diff` / `file` / `pattern` / `history` |
 | Worktrees | `xr worktree` |
+| Run / search / diff in a task's worktrees | `xr exec --worktree GLOB -- <command>` (also `search`, `diff`) |
 | Directory layout | `xr tree` |
 | Ignore the workspace directory | `xr repo gitignore` |
 | Check tools, config, and drift from repos.yaml | `xr doctor` |
@@ -59,6 +60,8 @@ A source starting with `/` or `~` is a `symlink` when `type` is omitted; any oth
 **`xr search`** searches files git knows about (tracked, plus untracked that are not ignored) and skips binaries. A glob with no separator matches the file name at any depth (`*.go`); one with a separator matches the relative path (`cmd/*.go`). Results are the same whether or not `rg` is installed, and whatever `-j` is set to.
 
 **Worktrees** are the pair `(repository, branch)`. Nothing is stored in `repos.yaml`; group a task with a branch-name glob. `add` without `--repo` prompts. The model, layout, and branch resolution are on `xr worktree --help`. After merges: `xr repo sync --update --prune`, then `xr worktree prune --gone --yes`.
+
+`exec`, `search` and `diff` (every mode) take `--worktree GLOB` to run on the worktrees of the selected repositories whose branch matches, instead of the workspace checkouts: `xr exec --worktree 'feat-x*' -- go test ./...`. Each worktree is reported as `repo@branch` (also `XR_REPO_NAME` in `exec`); `-r` / `-t` still choose the repositories. A glob that matches nothing runs nothing and exits 0.
 
 **`xr repo gitignore`** does not write `.gitignore` unless `--yes` is passed or the prompt is answered.
 

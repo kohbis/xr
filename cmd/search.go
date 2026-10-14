@@ -21,6 +21,7 @@ var (
 	searchTags       []string
 	searchJSON       bool
 	searchJobs       int
+	searchWorktree   string
 )
 
 var searchCmd = &cobra.Command{
@@ -35,11 +36,16 @@ repos.yaml order regardless, so concurrency does not change the output. With
 ripgrep installed the gain is smaller, since each search is already
 multi-threaded.
 
+--worktree searches worktrees instead of the workspace checkouts: those of the
+selected repositories whose branch matches the glob, as listed by
+'xr worktree list -b'. Each worktree is reported as <repo>@<branch>.
+
 Examples:
   xr search TODO
   xr search -t go TODO
   xr search -r project-a -g "*.go" "pattern"
   xr search -j 8 "pattern"
+  xr search --worktree 'feat-x*' "pattern"
   xr search --json "pattern"`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -52,8 +58,7 @@ Examples:
 			return err
 		}
 		cfg = cfg.WithTags(searchTags)
-
-		wsDir, err := cfg.WorkspaceDir()
+		cfg, wsDir, repoFilter, err := resolveTargets(cfg, searchRepo, searchWorktree)
 		if err != nil {
 			return err
 		}
@@ -65,7 +70,7 @@ Examples:
 			IgnoreCase: searchIgnoreCase,
 			Context:    searchContext,
 			UseRegex:   searchRegex,
-			RepoFilter: searchRepo,
+			RepoFilter: repoFilter,
 			Jobs:       searchJobs,
 			OnRepoError: func(repo string, err error) {
 				failed = append(failed, output.RepoResult{Name: repo, Status: "failed", Error: err.Error()})
@@ -156,6 +161,7 @@ func init() {
 	searchCmd.Flags().StringArrayVarP(&searchTags, "tag", "t", nil, "limit search to repos with any of these tags (repeatable)")
 	searchCmd.Flags().BoolVar(&searchJSON, "json", false, "output in JSON format")
 	searchCmd.Flags().IntVarP(&searchJobs, "jobs", "j", 1, "number of repositories to search concurrently")
+	registerWorktreeFlag(searchCmd, &searchWorktree, "search")
 	cobra.CheckErr(searchCmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))
 	cobra.CheckErr(searchCmd.RegisterFlagCompletionFunc("tag", shellcomp.CompleteTags))
 }

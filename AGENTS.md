@@ -98,6 +98,7 @@ All four must pass before merging.
 - `Manager.PathFor` is the only place the layout `<cfg.Worktrees>/<repo.Path>/<branch>` is derived.
 - `Manager.RepoDir` resolves symlink repos to their real location before git runs.
 - Paths are validated to stay inside the worktree directory; empty parents are removed on cleanup.
+- `--worktree GLOB` on `exec`, `search` and `diff` is wired in `cmd/targets.go` (`resolveTargets`): it turns the matching `Manager.List` entries into a view of the config whose repositories are named `repo@branch` with an absolute `Path`, and hands that to `runner`, `search` and `diff` with an empty workspace directory. Those packages must not learn about worktrees (`internal/worktree` is not a shared package); add a selector there, not a second code path in the internals. Like `WithTags`, the view must never be saved.
 
 ### Config (repos.yaml)
 
