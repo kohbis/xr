@@ -760,3 +760,43 @@ func TestNormalize_Tags(t *testing.T) {
 		}
 	})
 }
+
+func TestLoad_PathMustStayInsideWorkspace(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		wantErr bool
+	}{
+		{"plain", "api", false},
+		{"nested", "libs/api", false},
+		{"inner dot-dot", "libs/../api", false},
+		{"parent traversal", "../api", true},
+		{"escapes after descending", "libs/../../api", true},
+		{"absolute", "/tmp/api", true},
+		{"workspace itself", ".", true},
+		{"workspace itself via dot-dot", "libs/..", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgPath := filepath.Join(dir, "repos.yaml")
+			content := "repositories:\n  - name: api\n    source: git@github.com:user/api.git\n    path: " + tt.path + "\n"
+			if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := Load(cfgPath)
+			if tt.wantErr {
+				want := `repository "api": path "` + tt.path + `" must be a relative path inside the workspace`
+				if err == nil || err.Error() != want {
+					t.Fatalf("Load() error = %v, want %q", err, want)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+		})
+	}
+}

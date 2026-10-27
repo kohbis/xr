@@ -114,6 +114,9 @@ func (w *Workspace) createReadme() error {
 
 func (w *Workspace) addRepo(repo config.Repository, wsDir string) error {
 	destPath := filepath.Join(wsDir, repo.Path)
+	if err := pathsafe.Inside(wsDir, destPath); err != nil {
+		return fmt.Errorf("unsafe path for %s: %w", repo.Name, err)
+	}
 	if repo.IsSymlink() {
 		return w.addSymlink(repo, destPath)
 	}
@@ -511,7 +514,10 @@ func (w *Workspace) syncRepo(repo config.Repository, wsDir string, opts SyncOpti
 
 	var skipped bool
 	var err error
-	if repo.IsSymlink() {
+	if err = pathsafe.Inside(wsDir, destPath); err != nil {
+		p.Header(repo.Name, string(repo.Type))
+		err = fmt.Errorf("unsafe path: %w", err)
+	} else if repo.IsSymlink() {
 		skipped, err = w.syncSymlink(repo, destPath, opts, p)
 	} else {
 		skipped, err = w.syncClone(repo, destPath, opts, p)

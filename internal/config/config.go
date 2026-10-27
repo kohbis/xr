@@ -238,6 +238,12 @@ func normalize(cfg *Config) (*Config, error) {
 		if repo.Path == "" {
 			cfg.Repositories[i].Path = repo.Name
 		}
+		// Every command derives the checkout as <workspace>/<path>, and remove
+		// refuses one outside the workspace, so a path that leaves it would be
+		// cloned or linked where xr can no longer manage it.
+		if path := cfg.Repositories[i].Path; !filepath.IsLocal(path) || filepath.Clean(path) == "." {
+			return nil, fmt.Errorf("repository %q: path %q must be a relative path inside the workspace", repo.Name, path)
+		}
 	}
 
 	for i := range cfg.Repositories {

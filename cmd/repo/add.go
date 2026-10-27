@@ -113,6 +113,10 @@ If a repository with the same name or path already exists, an error is returned.
 		}
 
 		cfg.Repositories = append(cfg.Repositories, repo)
+		// Validate before saving, so a rejected entry is not left in repos.yaml.
+		if _, err := config.Reload(cfg); err != nil {
+			return fmt.Errorf("validating config: %w", err)
+		}
 		if err := config.Save(cfgPath, cfg); err != nil {
 			return fmt.Errorf("saving config: %w", err)
 		}

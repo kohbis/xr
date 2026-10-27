@@ -362,6 +362,46 @@ func TestRemoveRejectsEscapingPath(t *testing.T) {
 	}
 }
 
+// A path that passes config validation can still leave the workspace through a
+// symlinked directory inside it; neither add nor sync may create anything there.
+func TestAddAndSyncRejectPathThroughSymlinkedParent(t *testing.T) {
+	dir := t.TempDir()
+	outside := t.TempDir()
+	wsDir := filepath.Join(dir, "repos")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(wsDir, "escape")); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := config.Repository{
+		Name: "bad-repo", Path: "escape/bad-repo",
+		Type: config.RepoTypeSymlink, Source: t.TempDir(),
+	}
+	cfg := &config.Config{
+		Workspace:    "./repos",
+		Repositories: []config.Repository{repo},
+	}
+	ws := New(dir, cfg)
+
+	if err := ws.Add(repo); err == nil {
+		t.Error("Add() should reject a path that escapes the workspace")
+	}
+
+	result, err := ws.Sync(nil, SyncOptions{CloneMissing: true, Quiet: true})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if result.Failed != 1 {
+		t.Errorf("Failed = %d, want 1", result.Failed)
+	}
+
+	if _, err := os.Lstat(filepath.Join(outside, "bad-repo")); !os.IsNotExist(err) {
+		t.Errorf("nothing should be created outside the workspace, Lstat() error = %v", err)
+	}
+}
+
 func TestRemoveSymlink(t *testing.T) {
 	dir := t.TempDir()
 	wsDir := filepath.Join(dir, "repos")
