@@ -9,6 +9,7 @@ import (
 
 var (
 	pruneRepos  []string
+	pruneTags   []string
 	pruneGone   bool
 	pruneDryRun bool
 	pruneJSON   bool
@@ -36,7 +37,7 @@ Examples:
 		if err != nil {
 			return err
 		}
-		repos, err := m.SelectRepos(pruneRepos)
+		repos, err := selectRepos(m, pruneRepos, pruneTags)
 		if err != nil {
 			return err
 		}
@@ -91,6 +92,7 @@ Examples:
 
 func init() {
 	pruneCmd.Flags().StringArrayVarP(&pruneRepos, "repo", "r", nil, "limit to a repository (repeatable)")
+	pruneCmd.Flags().StringArrayVarP(&pruneTags, "tag", "t", nil, "limit to repos with any of these tags (repeatable)")
 	pruneCmd.Flags().BoolVar(&pruneGone, "gone", false, "also remove worktrees whose upstream branch is gone from origin")
 	pruneCmd.Flags().BoolVar(&pruneDryRun, "dry-run", false, "preview only, remove nothing")
 	pruneCmd.Flags().BoolVar(&pruneJSON, "json", false, "output in JSON format")

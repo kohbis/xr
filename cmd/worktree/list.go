@@ -13,6 +13,7 @@ import (
 
 var (
 	listRepos  []string
+	listTags   []string
 	listBranch string
 	listJSON   bool
 )
@@ -35,6 +36,7 @@ $ stash, < behind, > ahead), and ! for a worktree whose directory is missing.
 Examples:
   xr worktree list
   xr worktree list -b 'feat-x*'
+  xr worktree list -t backend
   xr worktree list -r api --json`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -42,7 +44,7 @@ Examples:
 		if err != nil {
 			return err
 		}
-		repos, err := m.SelectRepos(listRepos)
+		repos, err := selectRepos(m, listRepos, listTags)
 		if err != nil {
 			return err
 		}
@@ -88,6 +90,7 @@ Examples:
 
 func init() {
 	listCmd.Flags().StringArrayVarP(&listRepos, "repo", "r", nil, "limit to a repository (repeatable)")
+	listCmd.Flags().StringArrayVarP(&listTags, "tag", "t", nil, "limit to repos with any of these tags (repeatable)")
 	listCmd.Flags().StringVarP(&listBranch, "branch", "b", "", "filter branches by glob pattern (e.g. 'feat-x*')")
 	listCmd.Flags().BoolVar(&listJSON, "json", false, "output in JSON format")
 	cobra.CheckErr(listCmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))

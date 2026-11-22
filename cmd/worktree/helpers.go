@@ -21,12 +21,36 @@ func newManager(cmd *cobra.Command) (*wt.Manager, error) {
 	return wt.New(cfg.Root(), cfg), nil
 }
 
-// resolveTargetRepos turns --repo values into repositories. When none are given
-// it prompts for a selection, since worktrees are usually wanted for a subset of
-// the workspace rather than all of it.
-func resolveTargetRepos(cmd *cobra.Command, m *wt.Manager, names []string) ([]config.Repository, error) {
-	if len(names) > 0 {
-		return m.SelectRepos(names)
+// selectRepos applies --repo and --tag: a repository must match both, like the
+// other commands that take -t. Names are checked against the whole config, so a
+// misspelled --repo is an error even when --tag would have excluded it.
+func selectRepos(m *wt.Manager, names, tags []string) ([]config.Repository, error) {
+	repos, err := m.SelectRepos(names)
+	if err != nil {
+		return nil, err
+	}
+	if len(tags) == 0 {
+		return repos, nil
+	}
+	tagged := make(map[string]struct{})
+	for _, r := range m.Config.WithTags(tags).Repositories {
+		tagged[r.Name] = struct{}{}
+	}
+	selected := make([]config.Repository, 0, len(repos))
+	for _, r := range repos {
+		if _, ok := tagged[r.Name]; ok {
+			selected = append(selected, r)
+		}
+	}
+	return selected, nil
+}
+
+// resolveTargetRepos turns --repo and --tag values into repositories. When
+// neither is given it prompts for a selection, since worktrees are usually
+// wanted for a subset of the workspace rather than all of it.
+func resolveTargetRepos(cmd *cobra.Command, m *wt.Manager, names, tags []string) ([]config.Repository, error) {
+	if len(names) > 0 || len(tags) > 0 {
+		return selectRepos(m, names, tags)
 	}
 
 	shouldPrompt, err := interactive.ShouldPrompt(cmd)
@@ -34,7 +58,7 @@ func resolveTargetRepos(cmd *cobra.Command, m *wt.Manager, names []string) ([]co
 		return nil, err
 	}
 	if !shouldPrompt {
-		return nil, fmt.Errorf("missing required value(s): --repo (non-interactive)")
+		return nil, fmt.Errorf("missing required value(s): --repo or --tag (non-interactive)")
 	}
 
 	all := m.Config.Repositories

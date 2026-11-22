@@ -10,6 +10,7 @@ import (
 
 var (
 	addRepos  []string
+	addTags   []string
 	addCreate bool
 	addBase   string
 	addDryRun bool
@@ -29,13 +30,17 @@ The branch is resolved per repository:
 With --create the branch is created from --base, defaulting to the branch
 configured for the repository in repos.yaml, then to HEAD.
 
-Repositories are selected with --repo, which may be repeated. Without it you are
-prompted to pick them, because a task rarely spans every repository in the
-workspace; in non-interactive mode --repo is required.
+Repositories are selected with --repo and --tag, which may be repeated; given
+together, a repository must match both. Without either you are prompted to pick
+them, because a task rarely spans every repository in the workspace; in
+non-interactive mode one of them is required.
 
 Examples:
   # Same branch in two repositories
   xr worktree add feat-x -r api -r web
+
+  # Every repository tagged backend
+  xr worktree add feat-x -t backend --create
 
   # Second pull request for the same task in one repository
   xr worktree add feat-x-followup -r api --create --base main
@@ -50,7 +55,7 @@ Examples:
 		if err != nil {
 			return err
 		}
-		repos, err := resolveTargetRepos(cmd, m, addRepos)
+		repos, err := resolveTargetRepos(cmd, m, addRepos, addTags)
 		if err != nil {
 			return err
 		}
@@ -76,6 +81,7 @@ Examples:
 
 func init() {
 	addCmd.Flags().StringArrayVarP(&addRepos, "repo", "r", nil, "repository to create the worktree in (repeatable)")
+	addCmd.Flags().StringArrayVarP(&addTags, "tag", "t", nil, "repositories with any of these tags (repeatable)")
 	addCmd.Flags().BoolVar(&addCreate, "create", false, "create the branch when it exists neither locally nor on origin")
 	addCmd.Flags().StringVar(&addBase, "base", "", "start point for a branch created by --create (default: repos.yaml branch, then HEAD)")
 	addCmd.Flags().BoolVar(&addDryRun, "dry-run", false, "preview only, create no worktrees")
