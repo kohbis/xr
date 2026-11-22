@@ -10,6 +10,7 @@ import (
 
 var (
 	removeRepos  []string
+	removeTags   []string
 	removeForce  bool
 	removeDryRun bool
 	removeJSON   bool
@@ -20,7 +21,7 @@ var removeCmd = &cobra.Command{
 	Short: "Remove worktrees matching a branch pattern",
 	Long: `Remove the worktrees whose branch matches <branch>, which may be a glob.
 
-Without --repo, every repository in repos.yaml is searched, so a whole task can
+Without --repo or --tag, every repository in repos.yaml is searched, so a whole task can
 be cleaned up in one call once its pull requests are merged.
 
 git refuses to remove a worktree with uncommitted changes; --force discards them.
@@ -30,6 +31,7 @@ Confirmation is required before anything is removed: answer the prompt, or pass
 Examples:
   xr worktree remove feat-x
   xr worktree remove 'feat-x*'
+  xr worktree remove 'feat-x*' -t backend
   xr worktree remove feat-x -r api --force`,
 	Args:              cobra.ExactArgs(1),
 	ValidArgsFunction: completeBranches,
@@ -40,7 +42,7 @@ Examples:
 		if err != nil {
 			return err
 		}
-		repos, err := m.SelectRepos(removeRepos)
+		repos, err := selectRepos(m, removeRepos, removeTags)
 		if err != nil {
 			return err
 		}
@@ -102,6 +104,7 @@ func confirmRemoval(cmd *cobra.Command) (bool, error) {
 
 func init() {
 	removeCmd.Flags().StringArrayVarP(&removeRepos, "repo", "r", nil, "limit to a repository (repeatable)")
+	removeCmd.Flags().StringArrayVarP(&removeTags, "tag", "t", nil, "limit to repos with any of these tags (repeatable)")
 	removeCmd.Flags().BoolVarP(&removeForce, "force", "f", false, "remove even with uncommitted changes (discards them)")
 	removeCmd.Flags().BoolVar(&removeDryRun, "dry-run", false, "preview only, remove no worktrees")
 	removeCmd.Flags().BoolVar(&removeJSON, "json", false, "output in JSON format")

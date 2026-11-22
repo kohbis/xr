@@ -1,6 +1,9 @@
 package worktree
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/kohbis/xr/internal/shellcomp"
+	"github.com/spf13/cobra"
+)
 
 var Cmd = &cobra.Command{
 	Use:     "worktree",
@@ -34,9 +37,11 @@ func init() {
 	Cmd.AddCommand(removeCmd)
 	Cmd.AddCommand(pruneCmd)
 
-	// Every subcommand declares --repo; a registration failure only means shell
-	// completion is unavailable, which must not keep the command from running.
+	// Every subcommand declares --repo and --tag; a registration failure only
+	// means shell completion is unavailable, which must not keep the command
+	// from running.
 	for _, sub := range Cmd.Commands() {
 		_ = sub.RegisterFlagCompletionFunc("repo", completeRepoFlag)
+		_ = sub.RegisterFlagCompletionFunc("tag", shellcomp.CompleteTags)
 	}
 }
