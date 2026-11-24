@@ -48,7 +48,7 @@ A source starting with `/` or `~` is a `symlink` when `type` is omitted; any oth
 ## Running unattended
 
 - `xr init` prompts and refuses `--non-interactive`. Materialize a committed `repos.yaml` with `xr repo sync --clone-missing`.
-- `--non-interactive` fails instead of prompting. `--yes` confirms writes and destructive actions (`repo import`, `repo remove`, `repo gitignore`, `worktree remove`, `worktree prune --gone`).
+- `--non-interactive` fails instead of prompting. `--yes` confirms writes and destructive actions (`repo import`, `repo remove`, `repo gitignore`, `worktree remove`, `worktree prune --merged` / `--gone`).
 - `xr repo sync` prompts on a dirty checkout unless `--allow-dirty` or `--yes` is set. `--jobs` above 1 cannot prompt, so pass one of those or dirty repositories are skipped.
 - Commands that report per-repository results (`repo sync`, `exec`, `worktree add` / `remove` / `prune`, `search`, `diff pattern`) exit non-zero when any repository failed. A repository missing from the workspace is skipped, not failed. `repo list` always exits 0.
 - `xr doctor` exits non-zero only when a required tool is missing or `repos.yaml` cannot be parsed. A workspace that has not been cloned, a missing `rg`, no config at all, or a repository that drifted from its `repos.yaml` entry (other branch, other `origin`, symlink elsewhere or dangling, not a git repository) are warnings and exit 0. Drift is listed per repository under the `repositories` check (`issues` in `--json`).
@@ -59,7 +59,7 @@ A source starting with `/` or `~` is a `symlink` when `type` is omitted; any oth
 
 **`xr search`** searches files git knows about (tracked, plus untracked that are not ignored) and skips binaries. A glob with no separator matches the file name at any depth (`*.go`); one with a separator matches the relative path (`cmd/*.go`). Results are the same whether or not `rg` is installed, and whatever `-j` is set to.
 
-**Worktrees** are the pair `(repository, branch)`. Nothing is stored in `repos.yaml`; group a task with a branch-name glob. `add` without `--repo` prompts. The model, layout, and branch resolution are on `xr worktree --help`. After merges: `xr repo sync --update --prune`, then `xr worktree prune --gone --yes`.
+**Worktrees** are the pair `(repository, branch)`. Nothing is stored in `repos.yaml`; group a task with a branch-name glob. `add` without `--repo` prompts. The model, layout, and branch resolution are on `xr worktree --help`. After merges: `xr repo sync --update --prune`, then `xr worktree prune --merged --yes`. `--merged` removes worktrees whose branch landed in origin's default branch (merge, squash or rebase) and keeps any with commits that did not land; `--gone` only checks that the remote branch was deleted, which a closed, unmerged pull request also does.
 
 `exec`, `search` and `diff` (every mode) take `--worktree GLOB` to run on the worktrees of the selected repositories whose branch matches, instead of the workspace checkouts: `xr exec --worktree 'feat-x*' -- go test ./...`. Each worktree is reported as `repo@branch` (also `XR_REPO_NAME` in `exec`); `-r` / `-t` still choose the repositories. A glob that matches nothing runs nothing and exits 0.
 

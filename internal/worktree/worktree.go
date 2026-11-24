@@ -476,6 +476,64 @@ func (m *Manager) GoneEntries(repos []config.Repository) ([]Entry, error) {
 	return gone, nil
 }
 
+// MergedEntries returns worktrees whose branch has been merged into the
+// repository's default branch on origin (origin/<branch from repos.yaml>, else
+// origin/HEAD), whether by a merge commit or a squash or rebase merge. A branch
+// with commits that did not land, or with no commits of its own, is left out.
+// Like GoneEntries it reflects the last fetch.
+//
+// A repository with nothing to compare against is reported in skipped rather
+// than failing the whole run.
+func (m *Manager) MergedEntries(repos []config.Repository) (merged []Entry, skipped []Outcome, err error) {
+	entries, err := m.List(repos, "")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	dirByRepo := m.repoDirs(repos)
+	targets := map[string]string{}
+
+	for _, repo := range repos {
+		dir, ok := dirByRepo[repo.Name]
+		if !ok {
+			continue
+		}
+		target, err := git.RemoteDefaultRef(dir, repo.Branch)
+		if err != nil {
+			return nil, nil, fmt.Errorf("resolving default branch of %s: %w", repo.Name, err)
+		}
+		if target == "" {
+			if slices.ContainsFunc(entries, func(e Entry) bool { return e.Repo == repo.Name }) {
+				skipped = append(skipped, Outcome{
+					Repo:   repo.Name,
+					Status: StatusSkipped,
+					Detail: "no origin default branch to compare against (set branch in repos.yaml, or run 'git remote set-head origin --auto')",
+				})
+			}
+			continue
+		}
+		targets[repo.Name] = target
+	}
+
+	for _, entry := range entries {
+		if entry.Branch == "" {
+			continue
+		}
+		target, ok := targets[entry.Repo]
+		if !ok || strings.TrimPrefix(target, "refs/remotes/origin/") == entry.Branch {
+			continue
+		}
+		isMerged, err := git.BranchMerged(dirByRepo[entry.Repo], entry.Branch, target)
+		if err != nil {
+			return nil, nil, fmt.Errorf("checking whether %s/%s is merged: %w", entry.Repo, entry.Branch, err)
+		}
+		if isMerged {
+			merged = append(merged, entry)
+		}
+	}
+	return merged, skipped, nil
+}
+
 func validateBranch(branch string) error {
 	branch = strings.TrimSpace(branch)
 	if branch == "" {

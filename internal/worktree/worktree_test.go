@@ -479,3 +479,91 @@ func TestAdd_SymlinkedParentEscapesWorktreesDir(t *testing.T) {
 		t.Error("worktree created outside the worktrees directory")
 	}
 }
+
+// setupClonedRepo clones a bare remote with one commit on main into
+// <root>/repos/api, so the workspace repository has origin/main.
+func setupClonedRepo(t *testing.T) (*Manager, config.Repository, string) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not in PATH")
+	}
+	root := t.TempDir()
+	seed := filepath.Join(root, "seed")
+	initGitRepo(t, seed)
+	runGit(t, seed, "branch", "-M", "main")
+	remote := filepath.Join(root, "remote.git")
+	runGit(t, root, "clone", "-q", "--bare", seed, remote)
+
+	clone := filepath.Join(root, "repos", "api")
+	runGit(t, root, "clone", "-q", remote, clone)
+	runGit(t, clone, "config", "user.email", "xr@test")
+	runGit(t, clone, "config", "user.name", "xr")
+	runGit(t, clone, "config", "commit.gpgsign", "false")
+
+	cfg := &config.Config{
+		Workspace: "./repos",
+		Worktrees: "./worktrees",
+		Repositories: []config.Repository{
+			{Name: "api", Path: "api", Type: config.RepoTypeClone, Branch: "main"},
+		},
+	}
+	return New(root, cfg), cfg.Repositories[0], clone
+}
+
+func commitFile(t *testing.T, dir, name string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(name+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", name)
+	runGit(t, dir, "commit", "-q", "-m", name)
+}
+
+func TestMergedEntries(t *testing.T) {
+	m, repo, clone := setupClonedRepo(t)
+	repos := []config.Repository{repo}
+
+	for _, branch := range []string{"feat-merged", "feat-wip", "feat-fresh"} {
+		if _, err := m.Add(branch, repos, AddOptions{Create: true}); err != nil {
+			t.Fatalf("Add(%s) error = %v", branch, err)
+		}
+	}
+	commitFile(t, m.PathFor(repo, "feat-merged"), "merged.txt")
+	commitFile(t, m.PathFor(repo, "feat-wip"), "wip.txt")
+
+	// Squash-merge feat-merged on the remote side, then fetch it.
+	runGit(t, clone, "merge", "-q", "--squash", "feat-merged")
+	runGit(t, clone, "commit", "-q", "-m", "feat-merged (#1)")
+	runGit(t, clone, "push", "-q", "origin", "main")
+	runGit(t, clone, "fetch", "-q", "origin")
+
+	merged, skipped, err := m.MergedEntries(repos)
+	if err != nil {
+		t.Fatalf("MergedEntries() error = %v", err)
+	}
+	if len(skipped) != 0 {
+		t.Errorf("skipped = %+v, want none", skipped)
+	}
+	if len(merged) != 1 || merged[0].Branch != "feat-merged" {
+		t.Errorf("MergedEntries() = %+v, want only feat-merged", merged)
+	}
+}
+
+func TestMergedEntries_NoOriginIsSkipped(t *testing.T) {
+	m, repo := setupRepo(t)
+	repos := []config.Repository{repo}
+	if _, err := m.Add("feat-x", repos, AddOptions{Create: true}); err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	merged, skipped, err := m.MergedEntries(repos)
+	if err != nil {
+		t.Fatalf("MergedEntries() error = %v", err)
+	}
+	if len(merged) != 0 {
+		t.Errorf("merged = %+v, want none", merged)
+	}
+	if len(skipped) != 1 || skipped[0].Status != StatusSkipped || skipped[0].Repo != "api" {
+		t.Errorf("skipped = %+v, want one skipped outcome for api", skipped)
+	}
+}
