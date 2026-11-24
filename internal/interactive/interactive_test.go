@@ -43,23 +43,3 @@ func TestNonInteractiveAndYes(t *testing.T) {
 		t.Fatal("expected shouldPrompt false when --non-interactive is set")
 	}
 }
-
-func TestContainsFold(t *testing.T) {
-	search := containsFold([]string{"[Done]", "go-gh", "OAuth"})
-	tests := []struct {
-		input string
-		index int
-		want  bool
-	}{
-		{"gh", 1, true},
-		{"oauth", 2, true},
-		{"done", 0, true},
-		{"gh", 2, false},
-		{"", 1, true},
-	}
-	for _, tt := range tests {
-		if got := search(tt.input, tt.index); got != tt.want {
-			t.Errorf("search(%q, %d) = %v, want %v", tt.input, tt.index, got, tt.want)
-		}
-	}
-}

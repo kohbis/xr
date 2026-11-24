@@ -158,7 +158,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	if shouldPrompt && !yesFlag && !syncDryRun {
 		opts.ConfirmCheckout = func(repo config.Repository, fromBranch, toBranch string) (bool, error) {
 			label := fmt.Sprintf("%s: switch %q → %q", repo.Name, fromBranch, toBranch)
-			return promptYesNoSelect(label, true)
+			return promptConfirm(label, true)
 		}
 	}
 

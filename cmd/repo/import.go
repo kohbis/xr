@@ -214,7 +214,7 @@ func chooseRepos(candidates []config.Repository) ([]config.Repository, error) {
 	for _, r := range candidates {
 		names = append(names, r.Name)
 	}
-	selected, err := promptMultiSelectByDone("Select repos to import (search enabled)", names, 15)
+	selected, err := promptMultiSelect("Select repos to import", names, 15)
 	if err != nil {
 		return nil, err
 	}

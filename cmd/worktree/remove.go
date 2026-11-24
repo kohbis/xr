@@ -99,7 +99,7 @@ func confirmRemoval(cmd *cobra.Command) (bool, error) {
 	if !shouldPrompt {
 		return false, fmt.Errorf("non-interactive remove requires --yes")
 	}
-	return interactive.YesNo("Proceed", true)
+	return interactive.Confirm("Proceed", true)
 }
 
 func init() {
