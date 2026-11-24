@@ -172,7 +172,7 @@ so a pull request description does not need to repeat it.
 Minimal by design. Three direct dependencies:
 - `github.com/spf13/cobra` — CLI framework
 - `gopkg.in/yaml.v3` — YAML parsing
-- `github.com/manifoldco/promptui` — TTY select/input prompts, used only by `internal/interactive` (`xr init`, `xr repo remove`, `xr repo import`, `xr worktree add/remove`)
+- `github.com/charmbracelet/huh` — TTY select, multi-select and confirm prompts, used only by `internal/interactive` (`xr repo add`, `xr repo remove`, `xr repo import`, `xr repo sync`, `xr repo gitignore`, `xr worktree add/remove`). It replaced `promptui`, which is no longer maintained and had no multi-select
 
 Do not add new dependencies without strong justification. Prefer standard library.
 

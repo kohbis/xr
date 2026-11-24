@@ -125,7 +125,7 @@ func promptRemoveTargetsInteractive(reposByName map[string]config.Repository) ([
 	for name := range reposByName {
 		names = append(names, name)
 	}
-	return promptMultiSelectByDone("Select a repo to remove (search enabled)", names, 15)
+	return promptMultiSelect("Select repos to remove", names, 15)
 }
 
 func promptConfirmRemove() (bool, error) {

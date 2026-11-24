@@ -69,7 +69,7 @@ func resolveTargetRepos(cmd *cobra.Command, m *wt.Manager, names, tags []string)
 	for _, r := range all {
 		candidates = append(candidates, r.Name)
 	}
-	selected, err := interactive.MultiSelectByDone("Select repos for the worktree (search enabled)", candidates, 15)
+	selected, err := interactive.MultiSelect("Select repos for the worktree", candidates, 15)
 	if err != nil {
 		return nil, err
 	}
