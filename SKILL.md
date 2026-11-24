@@ -33,6 +33,7 @@ A source starting with `/` or `~` is a `symlink` when `type` is omitted; any oth
 | Bootstrap unattended | `xr repo sync --clone-missing --update` |
 | Match branches / fetch | `xr repo sync` |
 | Import repos already on disk | `xr repo import` |
+| Import a GitHub org's repos | `xr repo import --github OWNER -r NAME --yes` (`--dry-run` lists names; without `-r` it prompts), then `xr repo sync --clone-missing` |
 | Add or remove one repo | `xr repo add` / `xr repo remove` |
 | List status | `xr repo list` |
 | Run a command in each repo | `xr exec -- <command>` |
@@ -64,7 +65,7 @@ A source starting with `/` or `~` is a `symlink` when `type` is omitted; any oth
 
 `exec`, `search` and `diff` (every mode) take `--worktree GLOB` to run on the worktrees of the selected repositories whose branch matches, instead of the workspace checkouts: `xr exec --worktree 'feat-x*' -- go test ./...`. Each worktree is reported as `repo@branch` (also `XR_REPO_NAME` in `exec`); `-r` / `-t` still choose the repositories. A glob that matches nothing runs nothing and exits 0.
 
-**GitHub flags** (`worktree list --pr`, `worktree prune --closed`) read GitHub through `gh` and need it installed and logged in. A repository whose origin is not on GitHub is reported, not failed. `XR_NO_GH=1` turns `gh` off: those flags fail and nothing else changes.
+**GitHub flags** (`worktree list --pr`, `worktree prune --closed`, `repo import --github`) read GitHub through `gh` and need it installed and logged in. A repository whose origin is not on GitHub is reported, not failed. `XR_NO_GH=1` turns `gh` off: those flags fail and nothing else changes.
 
 **`xr repo gitignore`** does not write `.gitignore` unless `--yes` is passed or the prompt is answered.
 

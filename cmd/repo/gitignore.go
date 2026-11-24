@@ -53,5 +53,5 @@ func confirmIgnoreWorkspace(cmd *cobra.Command, workspace string) (bool, error) 
 	if !shouldPrompt {
 		return false, fmt.Errorf("non-interactive gitignore requires --yes")
 	}
-	return interactive.YesNo(fmt.Sprintf("Add %s to .gitignore", workspace), true)
+	return interactive.Confirm(fmt.Sprintf("Add %s to .gitignore", workspace), true)
 }

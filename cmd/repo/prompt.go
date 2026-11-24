@@ -40,10 +40,6 @@ func promptConfirm(label string, defaultNo bool) (bool, error) {
 	return interactive.Confirm(label, defaultNo)
 }
 
-func promptYesNoSelect(label string, defaultNo bool) (bool, error) {
-	return interactive.YesNo(label, defaultNo)
-}
-
-func promptMultiSelectByDone(label string, items []string, size int) ([]string, error) {
-	return interactive.MultiSelectByDone(label, items, size)
+func promptMultiSelect(label string, items []string, size int) ([]string, error) {
+	return interactive.MultiSelect(label, items, size)
 }
