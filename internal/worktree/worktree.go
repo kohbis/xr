@@ -21,6 +21,7 @@ import (
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/git"
+	"github.com/kohbis/xr/internal/github"
 	"github.com/kohbis/xr/internal/pathsafe"
 )
 
@@ -30,6 +31,10 @@ type Manager struct {
 	// Root is the directory containing repos.yaml; workspace and worktree
 	// directories are resolved relative to it.
 	Root string
+	// FindPullRequest looks up the pull request of a branch in the git
+	// repository at repoDir. Nil means github.LatestPullRequestFor; tests set it
+	// to avoid running gh.
+	FindPullRequest func(repoDir, branch string) (*github.PullRequest, error)
 }
 
 func New(root string, cfg *config.Config) *Manager {
@@ -118,6 +123,10 @@ type Entry struct {
 	Locked   bool   `json:"locked,omitempty"`
 	Prunable bool   `json:"prunable,omitempty"`
 	Status   string `json:"status,omitempty"`
+	// PR is the latest pull request of Branch, filled by AttachPullRequests;
+	// nil when there is none or the lookup failed (see PRError).
+	PR      *github.PullRequest `json:"pr,omitempty"`
+	PRError string              `json:"pr_error,omitempty"`
 }
 
 // List returns the linked worktrees of the given repositories. The main
@@ -173,6 +182,40 @@ func worktreeStatus(wt git.Worktree) string {
 		return "!"
 	}
 	return snapshot.Status
+}
+
+// AttachPullRequests fills PR on each entry with the latest pull request of its
+// branch on GitHub. It fails as a whole only when gh cannot be used at all; a
+// repository whose lookup fails (origin not on GitHub, gh not logged in) gets
+// PRError on its entries instead. Detached worktrees are left alone.
+func (m *Manager) AttachPullRequests(entries []Entry) error {
+	find := m.FindPullRequest
+	if find == nil {
+		if err := github.Available(); err != nil {
+			return err
+		}
+		find = github.LatestPullRequestFor
+	}
+
+	dirByRepo := m.repoDirs(m.Config.Repositories)
+	for i := range entries {
+		e := &entries[i]
+		if e.Branch == "" {
+			continue
+		}
+		dir, ok := dirByRepo[e.Repo]
+		if !ok {
+			e.PRError = "repository not available in workspace"
+			continue
+		}
+		pr, err := find(dir, e.Branch)
+		if err != nil {
+			e.PRError = err.Error()
+			continue
+		}
+		e.PR = pr
+	}
+	return nil
 }
 
 // validatePattern rejects a malformed glob up front, so that a bad pattern is
