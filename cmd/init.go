@@ -34,6 +34,12 @@ Examples:
   xr init /path/to/workspace`,
 	GroupID: "workspace",
 	Args:    cobra.MaximumNArgs(1),
+	ValidArgsFunction: func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+		if len(args) > 0 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return nil, cobra.ShellCompDirectiveFilterDirs
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if interactive.NonInteractive(cmd) {
 			return fmt.Errorf("xr init requires an interactive terminal; omit --non-interactive")
