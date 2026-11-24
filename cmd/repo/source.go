@@ -7,40 +7,52 @@ import (
 	"strings"
 )
 
-func resolveSource(source string, canPrompt bool, reader *bufio.Reader) (string, error) {
+// Clone protocols accepted by --protocol.
+const (
+	protocolSSH   = "ssh"
+	protocolHTTPS = "https"
+)
+
+// resolveSource turns --source into a repos.yaml source. protocol is --protocol:
+// empty when not given. An org/repo shorthand becomes a GitHub URL in protocol,
+// ssh by default. A full URL is kept as written, and a local path too; giving
+// --protocol for either is accepted only when it agrees with the URL, so a
+// contradiction is reported rather than one of the two silently winning.
+func resolveSource(source, protocol string, canPrompt bool, reader *bufio.Reader) (string, error) {
 	source = strings.TrimSpace(source)
+	if protocol != "" && protocol != protocolSSH && protocol != protocolHTTPS {
+		return "", fmt.Errorf("--protocol must be ssh or https")
+	}
 
 	// If missing, go interactive when prompts are allowed.
 	if source == "" {
 		if !canPrompt {
 			return "", fmt.Errorf("missing required value(s): --source")
 		}
-		v := promptSourceInteractive(reader)
+		v := promptSourceInteractive(reader, protocol)
 		if strings.TrimSpace(v) == "" {
 			return "", fmt.Errorf("aborted")
 		}
-		return v, nil
+		return v, checkProtocol(v, protocol)
 	}
 
 	// URL forms (HTTPS/SSH) are accepted as-is.
-	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") || strings.Contains(source, "://") || strings.Contains(source, "@") {
-		return source, nil
+	if isURL(source) {
+		return source, checkProtocol(source, protocol)
 	}
 
 	// Local path is accepted as-is.
-	if strings.HasPrefix(source, "/") || strings.HasPrefix(source, "~") {
-		return source, nil
+	if isLocalPath(source) {
+		return source, checkProtocol(source, protocol)
 	}
 
-	// org/repo: needs interactive disambiguation.
-	// Keep option and interactive behavior consistent.
+	// org/repo: a GitHub repository, cloned over ssh unless --protocol says
+	// otherwise.
 	if strings.Count(source, "/") == 1 {
-		if !canPrompt {
-			return "", fmt.Errorf("ambiguous --source %q: provide a full URL, or run interactively to choose SSH/HTTPS", source)
+		if protocol == "" {
+			protocol = protocolSSH
 		}
-		orgRepo := strings.TrimSuffix(source, ".git")
-		proto := promptGitHubProtocol(reader)
-		return formatGitHubSource(proto, orgRepo), nil
+		return formatGitHubSource(protocol, strings.TrimSuffix(source, ".git")), nil
 	}
 
 	// We intentionally do not support org-only here to keep behavior simple.
@@ -53,7 +65,45 @@ func resolveSource(source string, canPrompt bool, reader *bufio.Reader) (string,
 	return source, nil
 }
 
-func promptSourceInteractive(reader *bufio.Reader) string {
+func isURL(source string) bool {
+	return strings.Contains(source, "://") || strings.Contains(source, "@")
+}
+
+func isLocalPath(source string) bool {
+	return strings.HasPrefix(source, "/") || strings.HasPrefix(source, "~")
+}
+
+// urlProtocol returns the protocol a source clones with: ssh for ssh:// and
+// scp-like (git@host:org/repo) URLs, https for http(s):// URLs, and "" for
+// anything else (a local path, file://, git://).
+func urlProtocol(source string) string {
+	switch {
+	case strings.HasPrefix(source, "https://"), strings.HasPrefix(source, "http://"):
+		return protocolHTTPS
+	case strings.HasPrefix(source, "ssh://"):
+		return protocolSSH
+	case !strings.Contains(source, "://") && strings.Contains(source, "@"):
+		return protocolSSH
+	}
+	return ""
+}
+
+// checkProtocol reports a --protocol that contradicts the source it came with.
+func checkProtocol(source, protocol string) error {
+	if protocol == "" {
+		return nil
+	}
+	got := urlProtocol(source)
+	if got == "" {
+		return fmt.Errorf("--protocol %s does not apply to --source %q, which is not an ssh or https URL", protocol, source)
+	}
+	if got != protocol {
+		return fmt.Errorf("--protocol %s contradicts --source %q, which is an %s URL", protocol, source, got)
+	}
+	return nil
+}
+
+func promptSourceInteractive(reader *bufio.Reader, protocol string) string {
 	kind, err := promptSelect(reader, "Source kind", []string{"GitHub (URL or org/repo)", "Local path"}, 10, false)
 	if err != nil {
 		return ""
@@ -67,10 +117,14 @@ func promptSourceInteractive(reader *bufio.Reader) string {
 			return v
 		}
 
-		// org/repo (or org/repo.git): ask SSH vs HTTPS.
-		if strings.Count(v, "/") == 1 && !strings.HasPrefix(v, "/") && !strings.HasPrefix(v, "~") {
+		// org/repo (or org/repo.git): ask SSH vs HTTPS unless --protocol
+		// already said.
+		if strings.Count(v, "/") == 1 && !isLocalPath(v) {
 			orgRepo := strings.TrimSuffix(v, ".git")
-			proto := promptGitHubProtocol(reader)
+			proto := protocol
+			if proto == "" {
+				proto = promptGitHubProtocol(reader)
+			}
 			return formatGitHubSource(proto, orgRepo)
 		}
 		return v
@@ -95,7 +149,7 @@ func promptGitHubProtocol(reader *bufio.Reader) string {
 func formatGitHubSource(proto, orgRepo string) string {
 	orgRepo = strings.TrimSpace(strings.TrimSuffix(orgRepo, ".git"))
 	switch proto {
-	case "ssh":
+	case protocolSSH:
 		return "git@github.com:" + orgRepo + ".git"
 	default:
 		return "https://github.com/" + orgRepo + ".git"
