@@ -17,8 +17,9 @@ func stubLookPath(t *testing.T, missing ...string) {
 	for _, m := range missing {
 		absent[m] = struct{}{}
 	}
-	original := lookPath
-	t.Cleanup(func() { lookPath = original })
+	original, originalLoggedIn := lookPath, ghLoggedIn
+	t.Cleanup(func() { lookPath, ghLoggedIn = original, originalLoggedIn })
+	ghLoggedIn = func(string) bool { return true }
 	lookPath = func(name string) (string, error) {
 		if _, ok := absent[name]; ok {
 			return "", fmt.Errorf("exec: %q: executable file not found in $PATH", name)
@@ -95,6 +96,38 @@ func TestRun_GhDisabled(t *testing.T) {
 	if got.Status != StatusOK || !strings.Contains(got.Detail, "XR_NO_GH") {
 		t.Errorf("gh check with XR_NO_GH = %+v, want ok mentioning XR_NO_GH", got)
 	}
+}
+
+func TestRun_GhLogin(t *testing.T) {
+	cfgPath := writeConfig(t, t.TempDir(), "workspace: ./repos\n")
+	t.Setenv("GH_HOST", "")
+
+	t.Run("logged in", func(t *testing.T) {
+		stubLookPath(t)
+		got := checkByName(t, Run(cfgPath), "gh")
+		if got.Status != StatusOK || !strings.Contains(got.Detail, "logged in to github.com") {
+			t.Errorf("gh check = %+v, want ok, logged in to github.com", got)
+		}
+	})
+
+	t.Run("not logged in warns", func(t *testing.T) {
+		stubLookPath(t)
+		var asked string
+		ghLoggedIn = func(host string) bool { asked = host; return false }
+		t.Setenv("GH_HOST", "ghe.example.com")
+
+		report := Run(cfgPath)
+		got := checkByName(t, report, "gh")
+		if got.Status != StatusWarning || !strings.Contains(got.Detail, "not logged in to ghe.example.com") || !strings.Contains(got.Hint, "gh auth login") {
+			t.Errorf("gh check = %+v, want a warning naming GH_HOST and gh auth login", got)
+		}
+		if asked != "ghe.example.com" {
+			t.Errorf("asked gh about %q, want the GH_HOST host", asked)
+		}
+		if report.Failed != 0 {
+			t.Errorf("report.Failed = %d, want 0: gh is optional", report.Failed)
+		}
+	})
 }
 
 func TestRun_ConfigStatuses(t *testing.T) {

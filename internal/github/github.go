@@ -80,6 +80,23 @@ func Available() error {
 	return nil
 }
 
+// DefaultHost is the GitHub host gh targets when no repository names one:
+// GH_HOST when set, else github.com.
+func DefaultHost() string {
+	if h := strings.TrimSpace(os.Getenv("GH_HOST")); h != "" {
+		return h
+	}
+	return "github.com"
+}
+
+// LoggedIn reports whether gh has credentials for host, from its own login or
+// from GH_TOKEN / GH_ENTERPRISE_TOKEN. It only reads local state, so it does
+// not reach the network.
+func LoggedIn(host string) bool {
+	_, err := run("auth", "token", "--hostname", host)
+	return err == nil
+}
+
 // Repo identifies a repository on a GitHub host.
 type Repo struct {
 	Host  string
