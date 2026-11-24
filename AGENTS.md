@@ -14,6 +14,7 @@ These decide whether a feature belongs in `xr` and what shape it takes. A change
 
 - **git and repos.yaml are the source of truth.** `xr` keeps no state of its own (no database, cache, or metadata files); what it reports is derived from git and the config on each run.
 - **Build on tools every environment has.** `xr` runs `git` and `diff` across repositories rather than reimplementing them. A tool that is not universally installed may only be optional, with a fallback that returns the same result (`rg` for `xr search`); see External Runtime Dependencies.
+- **GitHub features are opt-in.** Pull request state and organization listings are not in git, so no fallback can return them. A feature that needs them may use `gh`, as long as it is enabled by an explicit flag, fails with a clear error when `gh` is missing or the repository is not on GitHub, and no command or flag that exists without it changes behavior. Do not use `gh` to improve a result git can already produce (for example, merge detection in `xr worktree prune --merged`): the result would then depend on whether `gh` is installed.
 - **Reach for existing mechanisms first.** Before adding a concept (a config key, an entity, a grouping), check whether tags, branch-name filters, or an existing command already express it. New concepts are allowed when they do not, but the pull request should show why.
 - **Automation is a first-class user.** A command is designed to run unattended as well as at a terminal: `--json`, exit status, and non-interactive behavior follow the conventions below.
 
@@ -203,7 +204,7 @@ Changelog excludes unscoped `docs:`, `test:` and `chore:` commits; scoped ones s
 
 ## External Runtime Dependencies
 
-`xr` shells out to `git` and `diff` (required) and `rg` (optional; `xr search` falls back to a built-in engine). `internal/doctor` is where that list is checked (`xr doctor`). A tool added here gains a check there, marked required or optional to match: only a missing required tool or an unparsable config is a failure. A workspace that has not been materialized, a missing optional tool, and a repository that drifted from its repos.yaml entry (`repositoriesCheck`: branch, `origin` URL, symlink target, not a git repository) are warnings that still exit 0 — the commands keep working on such a repository, so doctor reports the drift rather than gating on it. Per-repository findings go in `Check.Issues`, not in `Detail`.
+`xr` shells out to `git` and `diff` (required), `rg` (optional; `xr search` falls back to a built-in engine) and `gh` (optional; only the GitHub features use it, see Design Principles). `internal/doctor` is where that list is checked (`xr doctor`). A tool added here gains a check there, marked required or optional to match: only a missing required tool or an unparsable config is a failure. A workspace that has not been materialized, a missing optional tool, and a repository that drifted from its repos.yaml entry (`repositoriesCheck`: branch, `origin` URL, symlink target, not a git repository) are warnings that still exit 0 — the commands keep working on such a repository, so doctor reports the drift rather than gating on it. Per-repository findings go in `Check.Issues`, not in `Detail`.
 
 ### Concurrency (`--jobs`)
 

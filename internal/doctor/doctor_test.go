@@ -60,6 +60,8 @@ func TestRun_ToolStatuses(t *testing.T) {
 		{name: "diff missing fails", missing: []string{"diff"}, tool: "diff", wantStatus: StatusFailed, wantFailed: true},
 		// ripgrep is optional: search falls back to the built-in engine.
 		{name: "ripgrep missing only warns", missing: []string{"rg"}, tool: "rg", wantStatus: StatusWarning},
+		// gh is optional: only the flags that read GitHub need it.
+		{name: "gh missing only warns", missing: []string{"gh"}, tool: "gh", wantStatus: StatusWarning},
 	}
 
 	for _, tt := range tests {
