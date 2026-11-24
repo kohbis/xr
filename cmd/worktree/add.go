@@ -27,8 +27,11 @@ The branch is resolved per repository:
   - existing origin/<branch>   → local tracking branch is created
   - neither                    → error, unless --create is given
 
-With --create the branch is created from --base, defaulting to the branch
-configured for the repository in repos.yaml, then to HEAD.
+With --create the branch is created from --base. Without it, the branch
+configured for the repository in repos.yaml is used as origin has it
+(origin/<branch>), falling back to the local branch; with no branch configured,
+the branch origin/HEAD points to, then HEAD. Run 'xr repo sync' first so origin
+is current. The new branch has no upstream until it is pushed.
 
 Repositories are selected with --repo and --tag, which may be repeated; given
 together, a repository must match both. Without either you are prompted to pick
@@ -83,7 +86,7 @@ func init() {
 	addCmd.Flags().StringArrayVarP(&addRepos, "repo", "r", nil, "repository to create the worktree in (repeatable)")
 	addCmd.Flags().StringArrayVarP(&addTags, "tag", "t", nil, "repositories with any of these tags (repeatable)")
 	addCmd.Flags().BoolVar(&addCreate, "create", false, "create the branch when it exists neither locally nor on origin")
-	addCmd.Flags().StringVar(&addBase, "base", "", "start point for a branch created by --create (default: repos.yaml branch, then HEAD)")
+	addCmd.Flags().StringVar(&addBase, "base", "", "start point for a branch created by --create (default: origin/<repos.yaml branch>, see --help)")
 	addCmd.Flags().BoolVar(&addDryRun, "dry-run", false, "preview only, create no worktrees")
 	addCmd.Flags().BoolVar(&addJSON, "json", false, "output in JSON format")
 	cobra.CheckErr(addCmd.RegisterFlagCompletionFunc("repo", shellcomp.CompleteRepoNames))

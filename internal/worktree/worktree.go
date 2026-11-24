@@ -393,10 +393,10 @@ func (m *Manager) resolveBranchSource(dir string, repo config.Repository, branch
 
 	base := opts.Base
 	if base == "" {
-		base = repo.Branch
-	}
-	if base == "" {
-		base = "HEAD"
+		base, err = defaultBase(dir, repo)
+		if err != nil {
+			return git.WorktreeAddOptions{}, "", err
+		}
 	}
 	baseExists, err := git.RefExists(dir, base)
 	if err != nil {
@@ -405,7 +405,9 @@ func (m *Manager) resolveBranchSource(dir string, repo config.Repository, branch
 	if !baseExists {
 		return git.WorktreeAddOptions{}, "", fmt.Errorf("base ref %q not found", base)
 	}
-	return git.WorktreeAddOptions{CreateBranch: true, Base: base},
+	// A remote-tracking base would otherwise become the new branch's upstream
+	// (branch.autoSetupMerge), so pushing it would target the base branch.
+	return git.WorktreeAddOptions{CreateBranch: true, Base: base, NoTrack: true},
 		fmt.Sprintf("create branch from %s", base), nil
 }
 
@@ -581,6 +583,33 @@ func (m *Manager) ClosedEntries(repos []config.Repository) (closed []Entry, skip
 		}
 	}
 	return closed, skipped, nil
+}
+
+// defaultBase is where --create starts a branch when --base is not given: the
+// branch configured in repos.yaml as origin has it (origin/<branch>), since a
+// local copy can be stale or missing, else that local branch; without a
+// configured branch, the branch origin/HEAD points to, else HEAD. These are
+// the same refs `xr worktree prune --merged` compares against.
+func defaultBase(dir string, repo config.Repository) (string, error) {
+	if repo.Branch != "" {
+		remote := "origin/" + repo.Branch
+		ok, err := git.RefExists(dir, "refs/remotes/"+remote)
+		if err != nil {
+			return "", fmt.Errorf("checking %s: %w", remote, err)
+		}
+		if ok {
+			return remote, nil
+		}
+		return repo.Branch, nil
+	}
+	ref, err := git.RemoteDefaultRef(dir, "")
+	if err != nil {
+		return "", fmt.Errorf("resolving origin/HEAD: %w", err)
+	}
+	if ref != "" {
+		return strings.TrimPrefix(ref, "refs/remotes/"), nil
+	}
+	return "HEAD", nil
 }
 
 func validateBranch(branch string) error {
