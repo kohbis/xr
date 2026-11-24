@@ -20,7 +20,7 @@ var doctorCmd = &cobra.Command{
 	Short:   "Check the tools and workspace xr needs",
 	GroupID: "meta",
 	Long: `Check that the environment xr depends on is in place: the external tools it
-shells out to (git, diff, and optionally ripgrep), the repos.yaml it would use,
+shells out to (git, diff, and optionally ripgrep and gh), the repos.yaml it would use,
 whether the workspace has been materialized, and whether the repositories in
 it still match their repos.yaml entries.
 
@@ -34,7 +34,7 @@ repository count as different.
 
 Exits non-zero when something is broken — a required tool missing from PATH, or
 a repos.yaml that cannot be read. A workspace that has not been created yet, a
-missing ripgrep, or a repository that drifted from repos.yaml, is a warning and
+missing ripgrep or gh, or a repository that drifted from repos.yaml, is a warning and
 exits 0, because commands still work.
 
 Examples:

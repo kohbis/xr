@@ -32,7 +32,7 @@ source <(xr completion zsh)
 
 ## Prerequisites
 
-`xr` shells out to `git` and `diff` (both required) and, optionally, `rg`. Without ripgrep, `xr search` uses a built-in fallback and returns the same results. After install, `xr doctor` reports what is missing.
+`xr` shells out to `git` and `diff` (both required) and, optionally, `rg` and `gh`. Without ripgrep, `xr search` uses a built-in fallback and returns the same results. `gh` is used only by the flags that read GitHub, which fail without it. After install, `xr doctor` reports what is missing.
 
 ## Setup
 

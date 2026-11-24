@@ -23,7 +23,7 @@ const (
 	// StatusOK means the check found what it needed.
 	StatusOK = "ok"
 	// StatusWarning means xr still works, but in a reduced or not-yet-set-up
-	// form: ripgrep absent, or a workspace that has not been materialized.
+	// form: ripgrep or gh absent, or a workspace that has not been materialized.
 	StatusWarning = "warning"
 	// StatusFailed means a command will fail: a required tool is missing, or a
 	// config file exists but cannot be used.
@@ -85,6 +85,7 @@ func Run(cfgPath string) Report {
 	add(requiredTool("git", "xr init, xr repo sync, xr repo import, xr worktree, xr diff"))
 	add(requiredTool("diff", "xr diff file"))
 	add(optionalTool("rg", "xr search", "xr search falls back to its built-in engine, with the same results"))
+	add(optionalTool("gh", "the flags that read GitHub", "only those flags fail without it; install gh and run 'gh auth login' to use them"))
 
 	cfg, cfgCheck := configCheck(cfgPath)
 	add(cfgCheck)
