@@ -101,16 +101,6 @@ func RefExists(repoPath, ref string) (bool, error) {
 	return false, err
 }
 
-// UpstreamGone reports whether branch has a configured upstream that no longer
-// exists on the remote. Branches without an upstream return false.
-func UpstreamGone(repoPath, branch string) (bool, error) {
-	out, err := RunOutput(repoPath, "for-each-ref", "--format=%(upstream:track)", "refs/heads/"+branch)
-	if err != nil {
-		return false, err
-	}
-	return strings.TrimSpace(string(out)) == "[gone]", nil
-}
-
 // parseWorktreePorcelain parses the output of `git worktree list --porcelain`.
 // Records are separated by blank lines; the first record is the main worktree.
 func parseWorktreePorcelain(out string) []Worktree {
