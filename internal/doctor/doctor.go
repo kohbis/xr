@@ -66,6 +66,10 @@ type Report struct {
 // machine where a tool is missing.
 var lookPath = exec.LookPath
 
+// ghLoggedIn reports whether gh has credentials for a host. It is a variable
+// so tests do not depend on the gh of the machine running them.
+var ghLoggedIn = github.LoggedIn
+
 // Run diagnoses the environment for the config at cfgPath, which is the path a
 // command would use (see config.CommandPath).
 func Run(cfgPath string) Report {
@@ -131,11 +135,28 @@ func optionalTool(name, usedBy, fallback string) Check {
 
 // ghCheck reports gh like any optional tool, except that turning it off with
 // XR_NO_GH is a deliberate choice rather than something to fix, so it is ok.
+//
+// An installed gh that is not logged in is a warning too: the GitHub flags
+// would fail on it just the same.
 func ghCheck() Check {
 	if github.Disabled() {
 		return Check{Name: "gh", Status: StatusOK, Detail: "disabled by " + github.DisableEnv + " (the flags that read GitHub fail)"}
 	}
-	return optionalTool("gh", "the flags that read GitHub", "only those flags fail without it; install gh and run 'gh auth login' to use them")
+	check := optionalTool("gh", "the flags that read GitHub", "only those flags fail without it; install gh and run 'gh auth login' to use them")
+	if check.Status != StatusOK {
+		return check
+	}
+	host := github.DefaultHost()
+	if !ghLoggedIn(host) {
+		return Check{
+			Name:   "gh",
+			Status: StatusWarning,
+			Detail: fmt.Sprintf("%s (not logged in to %s)", check.Detail, host),
+			Hint:   "the flags that read GitHub fail until you run 'gh auth login'",
+		}
+	}
+	check.Detail = fmt.Sprintf("%s (logged in to %s)", check.Detail, host)
+	return check
 }
 
 // configCheck reports the config a command would load. A missing config is a

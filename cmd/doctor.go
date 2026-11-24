@@ -34,7 +34,7 @@ repository count as different.
 
 Exits non-zero when something is broken — a required tool missing from PATH, or
 a repos.yaml that cannot be read. A workspace that has not been created yet, a
-missing ripgrep or gh, or a repository that drifted from repos.yaml, is a warning and
+missing ripgrep or gh, a gh that is not logged in, or a repository that drifted from repos.yaml, is a warning and
 exits 0, because commands still work.
 
 Examples:
