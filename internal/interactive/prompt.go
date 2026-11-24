@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/manifoldco/promptui"
 )
@@ -13,12 +14,21 @@ func Select(label string, options []string, size int, startInSearchMode bool) (i
 		Items:             options,
 		Size:              min(len(options), size),
 		StartInSearchMode: startInSearchMode,
+		Searcher:          containsFold(options),
 	}
 	i, _, err := sel.Run()
 	if err != nil {
 		return 0, err
 	}
 	return i, nil
+}
+
+// containsFold is the search for Select: an item matches when it contains the
+// typed text, ignoring case.
+func containsFold(options []string) func(input string, index int) bool {
+	return func(input string, index int) bool {
+		return strings.Contains(strings.ToLower(options[index]), strings.ToLower(strings.TrimSpace(input)))
+	}
 }
 
 // Confirm asks a yes/no question using promptui's confirm mode.
