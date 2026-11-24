@@ -99,6 +99,8 @@ All four must pass before merging.
 - `Manager.PathFor` is the only place the layout `<cfg.Worktrees>/<repo.Path>/<branch>` is derived.
 - `Manager.RepoDir` resolves symlink repos to their real location before git runs.
 - Paths are validated to stay inside the worktree directory; empty parents are removed on cleanup.
+- Pull request state reaches worktrees only through `Manager.AttachPullRequests`, which `list --pr` and `ClosedEntries` (`prune --closed`) share. It goes through `Manager.FindPullRequest` when set, so tests stub that (or `run` inside `internal/github`) and never run the real `gh`.
+- `defaultBase` (the start point of `add --create`) and `MergedEntries` (`prune --merged`) resolve the same refs: `origin/<repo.Branch>`, else `origin/HEAD`. Change them together.
 - `--worktree GLOB` on `exec`, `search` and `diff` is wired in `cmd/targets.go` (`resolveTargets`): it turns the matching `Manager.List` entries into a view of the config whose repositories are named `repo@branch` with an absolute `Path`, and hands that to `runner`, `search` and `diff` with an empty workspace directory. Those packages must not learn about worktrees (`internal/worktree` is not a shared package); add a selector there, not a second code path in the internals. Like `WithTags`, the view must never be saved.
 
 ### Config (repos.yaml)
