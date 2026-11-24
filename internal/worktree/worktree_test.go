@@ -619,3 +619,50 @@ func TestAttachPullRequests_Disabled(t *testing.T) {
 		t.Errorf("AttachPullRequests() with %s set = %v, want ErrDisabled", github.DisableEnv, err)
 	}
 }
+
+func TestClosedEntries(t *testing.T) {
+	m, repo := setupRepo(t)
+	repos := []config.Repository{repo}
+	branches := []string{"feat-closed", "feat-closed-moved", "feat-open", "feat-merged", "feat-none", "feat-err"}
+	for _, b := range branches {
+		if _, err := m.Add(b, repos, AddOptions{Create: true}); err != nil {
+			t.Fatalf("Add(%s) error = %v", b, err)
+		}
+	}
+
+	entries, err := m.List(repos, "")
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	head := map[string]string{}
+	for _, e := range entries {
+		head[e.Branch] = e.Head
+	}
+
+	m.FindPullRequest = func(_, branch string) (*github.PullRequest, error) {
+		switch branch {
+		case "feat-closed":
+			return &github.PullRequest{Number: 1, State: github.StateClosed, Head: head[branch]}, nil
+		case "feat-closed-moved":
+			return &github.PullRequest{Number: 2, State: github.StateClosed, Head: "0000000"}, nil
+		case "feat-open":
+			return &github.PullRequest{Number: 3, State: github.StateOpen, Head: head[branch]}, nil
+		case "feat-merged":
+			return &github.PullRequest{Number: 4, State: github.StateMerged, Head: head[branch]}, nil
+		case "feat-err":
+			return nil, github.ErrNotGitHub
+		}
+		return nil, nil
+	}
+
+	closed, skipped, err := m.ClosedEntries(repos)
+	if err != nil {
+		t.Fatalf("ClosedEntries() error = %v", err)
+	}
+	if len(closed) != 1 || closed[0].Branch != "feat-closed" {
+		t.Errorf("ClosedEntries() = %+v, want only feat-closed", closed)
+	}
+	if len(skipped) != 1 || skipped[0].Status != StatusSkipped {
+		t.Errorf("skipped = %+v, want one skipped outcome for the failed lookup", skipped)
+	}
+}

@@ -545,6 +545,44 @@ func (m *Manager) MergedEntries(repos []config.Repository) (merged []Entry, skip
 	return merged, skipped, nil
 }
 
+// ClosedEntries returns worktrees whose branch's latest pull request on GitHub
+// was closed without merging, and whose branch has not moved since: a commit
+// made after the pull request was closed means the work went on, so the
+// worktree is kept. Branches with no pull request, or whose latest one is open
+// or merged, are left out.
+//
+// It fails as a whole only when gh cannot be used. A repository whose lookup
+// fails is reported in skipped, once.
+func (m *Manager) ClosedEntries(repos []config.Repository) (closed []Entry, skipped []Outcome, err error) {
+	entries, err := m.List(repos, "")
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := m.AttachPullRequests(entries); err != nil {
+		return nil, nil, err
+	}
+
+	reported := map[string]bool{}
+	for _, e := range entries {
+		if e.PRError != "" {
+			key := e.Repo + "\x00" + e.PRError
+			if !reported[key] {
+				reported[key] = true
+				skipped = append(skipped, Outcome{
+					Repo:   e.Repo,
+					Status: StatusSkipped,
+					Detail: "pull request lookup failed: " + e.PRError,
+				})
+			}
+			continue
+		}
+		if e.PR != nil && e.PR.State == github.StateClosed && e.PR.Head == e.Head {
+			closed = append(closed, e)
+		}
+	}
+	return closed, skipped, nil
+}
+
 func validateBranch(branch string) error {
 	branch = strings.TrimSpace(branch)
 	if branch == "" {
