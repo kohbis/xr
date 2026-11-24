@@ -16,6 +16,7 @@ import (
 
 	"github.com/kohbis/xr/internal/config"
 	"github.com/kohbis/xr/internal/git"
+	"github.com/kohbis/xr/internal/github"
 )
 
 // Status is the outcome of a single check.
@@ -85,7 +86,7 @@ func Run(cfgPath string) Report {
 	add(requiredTool("git", "xr init, xr repo sync, xr repo import, xr worktree, xr diff"))
 	add(requiredTool("diff", "xr diff file"))
 	add(optionalTool("rg", "xr search", "xr search falls back to its built-in engine, with the same results"))
-	add(optionalTool("gh", "the flags that read GitHub", "only those flags fail without it; install gh and run 'gh auth login' to use them"))
+	add(ghCheck())
 
 	cfg, cfgCheck := configCheck(cfgPath)
 	add(cfgCheck)
@@ -126,6 +127,15 @@ func optionalTool(name, usedBy, fallback string) Check {
 		}
 	}
 	return Check{Name: name, Status: StatusOK, Detail: path}
+}
+
+// ghCheck reports gh like any optional tool, except that turning it off with
+// XR_NO_GH is a deliberate choice rather than something to fix, so it is ok.
+func ghCheck() Check {
+	if github.Disabled() {
+		return Check{Name: "gh", Status: StatusOK, Detail: "disabled by " + github.DisableEnv + " (the flags that read GitHub fail)"}
+	}
+	return optionalTool("gh", "the flags that read GitHub", "only those flags fail without it; install gh and run 'gh auth login' to use them")
 }
 
 // configCheck reports the config a command would load. A missing config is a

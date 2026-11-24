@@ -86,6 +86,17 @@ func TestRun_ToolStatuses(t *testing.T) {
 	}
 }
 
+func TestRun_GhDisabled(t *testing.T) {
+	stubLookPath(t, "gh")
+	t.Setenv("XR_NO_GH", "1")
+	report := Run(writeConfig(t, t.TempDir(), "workspace: ./repos\n"))
+
+	got := checkByName(t, report, "gh")
+	if got.Status != StatusOK || !strings.Contains(got.Detail, "XR_NO_GH") {
+		t.Errorf("gh check with XR_NO_GH = %+v, want ok mentioning XR_NO_GH", got)
+	}
+}
+
 func TestRun_ConfigStatuses(t *testing.T) {
 	t.Run("missing config warns rather than fails", func(t *testing.T) {
 		stubLookPath(t)

@@ -39,6 +39,7 @@ A source starting with `/` or `~` is a `symlink` when `type` is omitted; any oth
 | Search file contents | `xr search PATTERN` |
 | git diff / a file / commit messages | `xr diff` / `file` / `pattern` / `history` |
 | Worktrees | `xr worktree` |
+| Pull request of each worktree | `xr worktree list --pr` |
 | Run / search / diff in a task's worktrees | `xr exec --worktree GLOB -- <command>` (also `search`, `diff`) |
 | Directory layout | `xr tree` |
 | Ignore the workspace directory | `xr repo gitignore` |
@@ -62,6 +63,8 @@ A source starting with `/` or `~` is a `symlink` when `type` is omitted; any oth
 **Worktrees** are the pair `(repository, branch)`. Nothing is stored in `repos.yaml`; group a task with a branch-name glob. `add` without `--repo` prompts. The model, layout, and branch resolution are on `xr worktree --help`. After merges: `xr repo sync --update --prune`, then `xr worktree prune --merged --yes`. `--merged` removes worktrees whose branch landed in origin's default branch (merge, squash or rebase) and keeps any with commits that did not land.
 
 `exec`, `search` and `diff` (every mode) take `--worktree GLOB` to run on the worktrees of the selected repositories whose branch matches, instead of the workspace checkouts: `xr exec --worktree 'feat-x*' -- go test ./...`. Each worktree is reported as `repo@branch` (also `XR_REPO_NAME` in `exec`); `-r` / `-t` still choose the repositories. A glob that matches nothing runs nothing and exits 0.
+
+**GitHub flags** (`worktree list --pr`) read GitHub through `gh` and need it installed and logged in. A repository whose origin is not on GitHub is reported, not failed. `XR_NO_GH=1` turns `gh` off: those flags fail and nothing else changes.
 
 **`xr repo gitignore`** does not write `.gitignore` unless `--yes` is passed or the prompt is answered.
 

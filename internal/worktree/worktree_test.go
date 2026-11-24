@@ -1,12 +1,14 @@
 package worktree
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/kohbis/xr/internal/config"
+	"github.com/kohbis/xr/internal/github"
 )
 
 func testConfig() *config.Config {
@@ -565,5 +567,55 @@ func TestMergedEntries_NoOriginIsSkipped(t *testing.T) {
 	}
 	if len(skipped) != 1 || skipped[0].Status != StatusSkipped || skipped[0].Repo != "api" {
 		t.Errorf("skipped = %+v, want one skipped outcome for api", skipped)
+	}
+}
+
+func TestAttachPullRequests(t *testing.T) {
+	m, repo := setupRepo(t)
+	repos := []config.Repository{repo}
+	for _, b := range []string{"feat-pr", "feat-none", "feat-err"} {
+		if _, err := m.Add(b, repos, AddOptions{Create: true}); err != nil {
+			t.Fatalf("Add(%s) error = %v", b, err)
+		}
+	}
+
+	m.FindPullRequest = func(repoDir, branch string) (*github.PullRequest, error) {
+		switch branch {
+		case "feat-pr":
+			return &github.PullRequest{Number: 4, State: github.StateOpen}, nil
+		case "feat-err":
+			return nil, github.ErrNotGitHub
+		}
+		return nil, nil
+	}
+
+	entries, err := m.List(repos, "")
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if err := m.AttachPullRequests(entries); err != nil {
+		t.Fatalf("AttachPullRequests() error = %v", err)
+	}
+
+	byBranch := map[string]Entry{}
+	for _, e := range entries {
+		byBranch[e.Branch] = e
+	}
+	if e := byBranch["feat-pr"]; e.PR == nil || e.PR.Number != 4 || e.PRError != "" {
+		t.Errorf("feat-pr = %+v, want PR #4", e)
+	}
+	if e := byBranch["feat-none"]; e.PR != nil || e.PRError != "" {
+		t.Errorf("feat-none = %+v, want no PR and no error", e)
+	}
+	if e := byBranch["feat-err"]; e.PR != nil || e.PRError == "" {
+		t.Errorf("feat-err = %+v, want PRError", e)
+	}
+}
+
+func TestAttachPullRequests_Disabled(t *testing.T) {
+	m, _ := setupRepo(t)
+	t.Setenv(github.DisableEnv, "1")
+	if err := m.AttachPullRequests(nil); !errors.Is(err, github.ErrDisabled) {
+		t.Errorf("AttachPullRequests() with %s set = %v, want ErrDisabled", github.DisableEnv, err)
 	}
 }
