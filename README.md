@@ -69,6 +69,9 @@ Flags, examples, and per-command behavior are on `xr --help` and `xr <cmd> --hel
 | Search | `xr search PATTERN` |
 | Compare a file | `xr diff file PATH` |
 | Worktree in selected repos | `xr worktree add BRANCH -r NAME` |
+| Pull requests of a task | `xr worktree list -b 'BRANCH*' --pr` |
+| Clean up finished worktrees | `xr worktree prune --merged --closed` |
+| Import a GitHub organization's repos | `xr repo import --github OWNER` |
 | Another workspace | `xr --config PATH repo list` |
 
 `xr init` is interactive and selects its config with `-f` / `--file`. Every other command uses the global `--config`. For CI or agents, bootstrap with `xr repo sync --clone-missing` instead of `init`.
