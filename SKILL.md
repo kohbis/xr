@@ -4,9 +4,12 @@ description: >
   Multi-repo workspace CLI. Use this skill whenever the user mentions "xr", or when
   a task involves cross-repository search, diff, comparison, tree visualization,
   running a command in every repository, git worktrees across repositories,
-  adding/removing/listing/syncing workspace repositories, checking the workspace
-  setup, or managing .gitignore for a multi-repo workspace. Also use when
-  repos.yaml is referenced.
+  the pull requests of a task that spans repositories (their state and checks),
+  cleaning up worktrees whose work was merged or abandoned,
+  adding/removing/listing/syncing workspace repositories, importing the
+  repositories of a GitHub organization, checking the workspace setup, or
+  managing .gitignore for a multi-repo workspace. Also use when repos.yaml is
+  referenced.
 ---
 
 # xr — Agent Skills Reference
@@ -34,18 +37,28 @@ A source starting with `/` or `~` is a `symlink` when `type` is omitted; any oth
 | Match branches / fetch | `xr repo sync` |
 | Import repos already on disk | `xr repo import` |
 | Import a GitHub org's repos | `xr repo import --github OWNER -r NAME --yes` (`--dry-run` lists names; without `-r` it prompts), then `xr repo sync --clone-missing` |
-| Add or remove one repo | `xr repo add` / `xr repo remove` |
+| Add or remove one repo | `xr repo add -s org/repo` (ssh; `--protocol https`) / `xr repo remove` |
 | List status | `xr repo list` |
 | Run a command in each repo | `xr exec -- <command>` |
 | Search file contents | `xr search PATTERN` |
 | git diff / a file / commit messages | `xr diff` / `file` / `pattern` / `history` |
 | Worktrees | `xr worktree` |
 | Pull request of each worktree | `xr worktree list --pr` |
+| Clean up finished worktrees | `xr repo sync --update --prune`, then `xr worktree prune --merged --closed --yes` |
 | Run / search / diff in a task's worktrees | `xr exec --worktree GLOB -- <command>` (also `search`, `diff`) |
 | Directory layout | `xr tree` |
 | Ignore the workspace directory | `xr repo gitignore` |
 | Check tools, config, and drift from repos.yaml | `xr doctor` |
 | Another workspace | `xr --config PATH <command>` |
+
+## A task across repositories
+
+A task is a branch name shared by the repositories it touches; xr stores nothing else about it.
+
+1. `xr repo sync --update` so origin is current, then `xr worktree add feat-x -r api -r web --create`. The branch starts from `origin/<branch>` of each repository's repos.yaml `branch`.
+2. Work and test in the task's worktrees: `xr exec --worktree 'feat-x*' -- go test ./...`, `xr search --worktree 'feat-x*' PATTERN`, `xr diff --worktree 'feat-x*'`.
+3. Open pull requests per repository (for example `xr exec --worktree 'feat-x*' -- gh pr create --fill`), then follow them with `xr worktree list -b 'feat-x*' --pr --json`.
+4. Once they are merged or closed: `xr repo sync --update --prune`, then `xr worktree prune --merged --closed --yes`.
 
 ## Running unattended
 
@@ -61,7 +74,7 @@ A source starting with `/` or `~` is a `symlink` when `type` is omitted; any oth
 
 **`xr search`** searches files git knows about (tracked, plus untracked that are not ignored) and skips binaries. A glob with no separator matches the file name at any depth (`*.go`); one with a separator matches the relative path (`cmd/*.go`). Results are the same whether or not `rg` is installed, and whatever `-j` is set to.
 
-**Worktrees** are the pair `(repository, branch)`. Nothing is stored in `repos.yaml`; group a task with a branch-name glob. `add` without `--repo` prompts. The model, layout, and branch resolution are on `xr worktree --help`. After merges: `xr repo sync --update --prune`, then `xr worktree prune --merged --yes`. `--merged` removes worktrees whose branch landed in origin's default branch (merge, squash or rebase) and keeps any with commits that did not land. Add `--closed` to also remove worktrees whose pull request was closed without merging.
+**Worktrees** are the pair `(repository, branch)`. Nothing is stored in `repos.yaml`; group a task with a branch-name glob. `add` without `--repo` prompts. The model, layout, and branch resolution are on `xr worktree --help`. `add --create` without `--base` starts from `origin/<branch>`, so fetch first (`xr repo sync`) or the branch starts from a stale commit. After merges: `xr repo sync --update --prune`, then `xr worktree prune --merged --yes`. `--merged` removes worktrees whose branch landed in origin's default branch (merge, squash or rebase) and keeps any with commits that did not land. Add `--closed` to also remove worktrees whose pull request was closed without merging.
 
 `exec`, `search` and `diff` (every mode) take `--worktree GLOB` to run on the worktrees of the selected repositories whose branch matches, instead of the workspace checkouts: `xr exec --worktree 'feat-x*' -- go test ./...`. Each worktree is reported as `repo@branch` (also `XR_REPO_NAME` in `exec`); `-r` / `-t` still choose the repositories. A glob that matches nothing runs nothing and exits 0.
 

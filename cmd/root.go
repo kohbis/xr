@@ -22,7 +22,12 @@ var rootCmd = &cobra.Command{
 	Use:   "xr",
 	Short: "Cross-repository search & management CLI",
 	Long: `xr is a CLI tool for searching and managing multiple repositories.
-Define repositories in repos.yaml and use xr to search, view, and compare across them.`,
+Define repositories in repos.yaml and use xr to search, view, and compare across them.
+
+Environment:
+  XR_NO_GH   set to 1 to keep xr from running gh: the flags that read GitHub
+             (worktree list --pr, worktree prune --closed, repo import --github)
+             then fail, and nothing else changes`,
 	PersistentPreRun: func(_ *cobra.Command, _ []string) {
 		output.SetColorEnabled(!noColor)
 	},
