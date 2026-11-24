@@ -12,10 +12,11 @@ import (
 )
 
 var (
-	addSource string
-	addBranch string
-	addPath   string
-	addType   string
+	addSource   string
+	addProtocol string
+	addBranch   string
+	addPath     string
+	addType     string
 )
 
 var addCmd = &cobra.Command{
@@ -25,6 +26,10 @@ var addCmd = &cobra.Command{
 The repository type is inferred from the source unless --type is specified:
   - Local path (starts with / or ~) → symlink
   - Remote URL                      → clone
+
+--source also accepts org/repo for a GitHub repository, cloned over ssh unless
+--protocol https is given. With a full URL, --protocol is optional and must
+match the URL's protocol.
 
 If a repository with the same name or path already exists, an error is returned.`,
 	Args: cobra.RangeArgs(0, 1),
@@ -41,7 +46,7 @@ If a repository with the same name or path already exists, an error is returned.
 		}
 
 		// Collect required values first; decide repo name last.
-		resolvedSource, err := resolveSource(addSource, shouldPrompt, reader)
+		resolvedSource, err := resolveSource(addSource, addProtocol, shouldPrompt, reader)
 		if err != nil {
 			return err
 		}
@@ -170,6 +175,7 @@ func reloadConfigFromMemory(cfg *config.Config) (*config.Config, error) {
 
 func init() {
 	addCmd.Flags().StringVarP(&addSource, "source", "s", "", "source URL or local path (required)")
+	addCmd.Flags().StringVar(&addProtocol, "protocol", "", "clone protocol for an org/repo source: ssh (default) or https; with a full URL it must match")
 	addCmd.Flags().StringVarP(&addBranch, "branch", "b", "", "branch name")
 	addCmd.Flags().StringVarP(&addPath, "path", "p", "", "relative path within workspace (default: name)")
 	addCmd.Flags().StringVarP(&addType, "type", "t", "", "repository type: symlink or clone (auto-detected if omitted)")
