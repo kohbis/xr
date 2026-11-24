@@ -26,6 +26,11 @@ to one task by naming their branches consistently and filtering by pattern:
   xr worktree list -b 'feat-x*'
   xr worktree remove 'feat-x*'
 
+Follow the task's pull requests, and clean up once they are merged or closed:
+
+  xr worktree list -b 'feat-x*' --pr
+  xr repo sync --update --prune && xr worktree prune --merged --closed
+
 Worktrees live under the directory configured as 'worktrees' in repos.yaml
 (default ./worktrees), at <worktrees>/<repo path>/<branch>. Branch names
 containing slashes nest as directories.`,

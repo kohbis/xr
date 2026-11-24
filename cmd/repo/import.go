@@ -25,7 +25,7 @@ var (
 
 var importCmd = &cobra.Command{
 	Use:   "import",
-	Short: "Import existing repositories into repos.yaml",
+	Short: "Import repositories on disk or from GitHub into repos.yaml",
 	Long: `Scan the workspace directory for repositories and add new ones to repos.yaml.
 
 With --github OWNER, list the repositories of a GitHub user or organization
