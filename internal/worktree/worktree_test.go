@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kohbis/xr/internal/config"
@@ -664,5 +665,74 @@ func TestClosedEntries(t *testing.T) {
 	}
 	if len(skipped) != 1 || skipped[0].Status != StatusSkipped {
 		t.Errorf("skipped = %+v, want one skipped outcome for the failed lookup", skipped)
+	}
+}
+
+func gitOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git %v in %s: %v", args, dir, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func TestAdd_CreateStartsFromOrigin(t *testing.T) {
+	m, repo, clone := setupClonedRepo(t)
+	repos := []config.Repository{repo}
+
+	// origin/main moves ahead of the local main, as after a fetch.
+	runGit(t, clone, "checkout", "-q", "-b", "tmp")
+	commitFile(t, clone, "upstream.txt")
+	runGit(t, clone, "update-ref", "refs/remotes/origin/main", "HEAD")
+	runGit(t, clone, "checkout", "-q", "main")
+	runGit(t, clone, "branch", "-q", "-D", "tmp")
+	originMain := gitOutput(t, clone, "rev-parse", "origin/main")
+
+	result, err := m.Add("feat-x", repos, AddOptions{Create: true})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+	if got := result.Outcomes[0]; got.Status != StatusCreated || got.Detail != "create branch from origin/main" {
+		t.Fatalf("Add() outcome = %+v, want created from origin/main", got)
+	}
+	if got := gitOutput(t, clone, "rev-parse", "feat-x"); got != originMain {
+		t.Errorf("feat-x starts at %s, want origin/main %s", got, originMain)
+	}
+	if up := gitOutput(t, clone, "for-each-ref", "--format=%(upstream)", "refs/heads/feat-x"); up != "" {
+		t.Errorf("feat-x upstream = %q, want none until pushed", up)
+	}
+}
+
+func TestDefaultBase(t *testing.T) {
+	_, _, clone := setupClonedRepo(t)
+	runGit(t, clone, "branch", "-q", "local-only")
+
+	tests := []struct {
+		name   string
+		branch string
+		setup  func(t *testing.T)
+		want   string
+	}{
+		{name: "configured branch on origin", branch: "main", want: "origin/main"},
+		{name: "configured branch only local", branch: "local-only", want: "local-only"},
+		{name: "no branch, origin/HEAD", setup: func(t *testing.T) { runGit(t, clone, "remote", "set-head", "origin", "main") }, want: "origin/main"},
+		{name: "no branch, no origin/HEAD", setup: func(t *testing.T) { runGit(t, clone, "remote", "set-head", "origin", "--delete") }, want: "HEAD"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				tt.setup(t)
+			}
+			got, err := defaultBase(clone, config.Repository{Name: "api", Branch: tt.branch})
+			if err != nil {
+				t.Fatalf("defaultBase() error = %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("defaultBase() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

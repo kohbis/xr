@@ -39,6 +39,9 @@ type WorktreeAddOptions struct {
 	Base string
 	// Track sets up the new branch to track Base as its upstream.
 	Track bool
+	// NoTrack keeps a remote-tracking Base from becoming the new branch's
+	// upstream, which git would otherwise set up (branch.autoSetupMerge).
+	NoTrack bool
 }
 
 // WorktreeAdd creates a worktree for branch at dir.
@@ -48,6 +51,8 @@ func WorktreeAdd(repoPath, dir, branch string, opts WorktreeAddOptions) error {
 		args = append(args, "-b", branch)
 		if opts.Track {
 			args = append(args, "--track")
+		} else if opts.NoTrack {
+			args = append(args, "--no-track")
 		}
 		args = append(args, dir)
 		if opts.Base != "" {
