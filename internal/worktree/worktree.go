@@ -444,43 +444,11 @@ func (m *Manager) pruneOne(repo config.Repository, dryRun bool) Outcome {
 	return outcome
 }
 
-// GoneEntries returns worktrees whose branch tracked a remote branch that no
-// longer exists, i.e. the typical leftovers of a merged and deleted pull
-// request. It reflects the last fetch, so run `xr repo sync --update --prune`
-// first for an accurate answer.
-func (m *Manager) GoneEntries(repos []config.Repository) ([]Entry, error) {
-	entries, err := m.List(repos, "")
-	if err != nil {
-		return nil, err
-	}
-
-	dirByRepo := m.repoDirs(repos)
-
-	var gone []Entry
-	for _, entry := range entries {
-		if entry.Branch == "" {
-			continue
-		}
-		dir, ok := dirByRepo[entry.Repo]
-		if !ok {
-			continue
-		}
-		isGone, err := git.UpstreamGone(dir, entry.Branch)
-		if err != nil {
-			return nil, fmt.Errorf("checking upstream of %s/%s: %w", entry.Repo, entry.Branch, err)
-		}
-		if isGone {
-			gone = append(gone, entry)
-		}
-	}
-	return gone, nil
-}
-
 // MergedEntries returns worktrees whose branch has been merged into the
 // repository's default branch on origin (origin/<branch from repos.yaml>, else
 // origin/HEAD), whether by a merge commit or a squash or rebase merge. A branch
 // with commits that did not land, or with no commits of its own, is left out.
-// Like GoneEntries it reflects the last fetch.
+// It reflects the last fetch, so run `xr repo sync --update --prune` first.
 //
 // A repository with nothing to compare against is reported in skipped rather
 // than failing the whole run.
