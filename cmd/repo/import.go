@@ -20,6 +20,7 @@ var (
 	importGitHub string
 	importRepos  []string
 	importProto  string
+	importJSON   bool
 )
 
 var importCmd = &cobra.Command{
@@ -45,7 +46,9 @@ Lists newly discovered repos, then prompts for confirmation before writing repos
 Use --dry-run to print discoveries without writing or prompting.
 
 For automation, use --yes to apply without prompting, or --non-interactive to fail
-instead of waiting for input (requires --yes to write).
+instead of waiting for input (requires --yes to write). --json prints the
+repositories found (with --dry-run) or added as JSON and never prompts, so it
+needs --dry-run or --yes, and -r with --github.
 
 Examples:
   xr repo import --dry-run
@@ -70,10 +73,14 @@ Examples:
 				if err != nil {
 					return err
 				}
-				if !shouldPrompt {
-					return fmt.Errorf("--github needs --repo to name the repositories without a terminal (use --dry-run to list them)")
+				if !shouldPrompt || importJSON {
+					return fmt.Errorf("--github needs --repo to name the repositories without a prompt (use --dry-run to list them)")
 				}
 			}
+		}
+
+		if importJSON && !importDryRun && !interactive.Yes(cmd) {
+			return fmt.Errorf("--json does not prompt, so writing repos.yaml requires --yes (or use --dry-run)")
 		}
 
 		cfgPath := config.CommandPath(cmd)
@@ -90,17 +97,28 @@ Examples:
 			cfg = &config.Config{Workspace: "./repos", Path: absCfgPath}
 		}
 
-		var newRepos []config.Repository
+		var (
+			newRepos []config.Repository
+			warnings []string
+		)
 		if importGitHub != "" {
-			newRepos, err = githubRepos(cfg)
+			newRepos, warnings, err = githubRepos(cfg)
 		} else {
-			newRepos, err = scannedRepos(cfg)
+			newRepos, warnings, err = scannedRepos(cfg)
 		}
 		if err != nil {
 			return err
 		}
+		if !importJSON {
+			for _, w := range warnings {
+				output.PrintWarning(w)
+			}
+		}
 
 		if len(newRepos) == 0 {
+			if importJSON {
+				return printImportJSON(nil, warnings)
+			}
 			fmt.Println("No new repositories found.")
 			return nil
 		}
@@ -119,9 +137,14 @@ Examples:
 			chosen = true
 		}
 
-		fmt.Printf("Found %d new repo(s):\n", len(newRepos))
-		for _, r := range newRepos {
-			fmt.Printf("  + %-20s %-8s %s\n", r.Name, string(r.Type), r.Source)
+		if importJSON && importDryRun {
+			return printImportJSON(newRepos, warnings)
+		}
+		if !importJSON {
+			fmt.Printf("Found %d new repo(s):\n", len(newRepos))
+			for _, r := range newRepos {
+				fmt.Printf("  + %-20s %-8s %s\n", r.Name, string(r.Type), r.Source)
+			}
 		}
 
 		if importDryRun {
@@ -154,20 +177,55 @@ Examples:
 			return fmt.Errorf("saving config: %w", err)
 		}
 
+		if importJSON {
+			return printImportJSON(newRepos, warnings)
+		}
 		fmt.Printf("Added %d repo(s) to %s.\n", len(newRepos), cfgPath)
 		return nil
 	},
 }
 
+// importedRepo is one repository in the --json output.
+type importedRepo struct {
+	Name   string `json:"name"`
+	Source string `json:"source"`
+	Type   string `json:"type,omitempty"`
+	Branch string `json:"branch,omitempty"`
+	Path   string `json:"path"`
+}
+
+// printImportJSON prints the repositories found, which were also written to
+// repos.yaml unless --dry-run is set. Warnings go in the output rather than to
+// stderr.
+func printImportJSON(repos []config.Repository, warnings []string) error {
+	list := make([]importedRepo, 0, len(repos))
+	for _, r := range repos {
+		list = append(list, importedRepo{Name: r.Name, Source: r.Source, Type: string(r.Type), Branch: r.Branch, Path: r.Path})
+	}
+	if warnings == nil {
+		warnings = []string{}
+	}
+	addedCount := 0
+	if !importDryRun {
+		addedCount = len(list)
+	}
+	return output.PrintJSON(output.CommandResult{
+		Command: "repo import",
+		Summary: map[string]int{"found": len(list), "added": addedCount},
+		Data: map[string]any{
+			"dry_run":  importDryRun,
+			"repos":    list,
+			"warnings": warnings,
+		},
+	})
+}
+
 // scannedRepos returns the repositories found in the workspace directory that
 // repos.yaml does not list yet.
-func scannedRepos(cfg *config.Config) ([]config.Repository, error) {
+func scannedRepos(cfg *config.Config) ([]config.Repository, []string, error) {
 	scan, err := newWorkspace(cfg).ScanRepos()
 	if err != nil {
-		return nil, fmt.Errorf("scanning workspace: %w", err)
-	}
-	for _, warning := range scan.Warnings {
-		output.PrintWarning(warning)
+		return nil, nil, fmt.Errorf("scanning workspace: %w", err)
 	}
 
 	existing := make(map[string]struct{}, len(cfg.Repositories))
@@ -180,31 +238,32 @@ func scannedRepos(cfg *config.Config) ([]config.Repository, error) {
 			newRepos = append(newRepos, r)
 		}
 	}
-	return newRepos, nil
+	return newRepos, scan.Warnings, nil
 }
 
 // githubRepos returns the repositories of the --github owner that repos.yaml
 // does not list yet.
-func githubRepos(cfg *config.Config) ([]config.Repository, error) {
+func githubRepos(cfg *config.Config) ([]config.Repository, []string, error) {
 	listed, truncated, err := github.ListRepos(importGitHub)
 	if err != nil {
-		return nil, fmt.Errorf("listing repositories of %s: %w", importGitHub, err)
+		return nil, nil, fmt.Errorf("listing repositories of %s: %w", importGitHub, err)
 	}
+	var warnings []string
 	if truncated {
-		output.PrintWarning(fmt.Sprintf("listing of %s stopped at %d repositories", importGitHub, len(listed)))
+		warnings = append(warnings, fmt.Sprintf("listing of %s stopped at %d repositories", importGitHub, len(listed)))
 	}
 	if len(importRepos) > 0 {
 		listed, err = github.SelectByName(listed, importRepos)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", importGitHub, err)
+			return nil, nil, fmt.Errorf("%s: %w", importGitHub, err)
 		}
 	}
 
 	newRepos, conflicts := github.PlanImport(cfg.Repositories, listed, importProto)
 	for _, c := range conflicts {
-		output.PrintWarning("skipped " + c)
+		warnings = append(warnings, "skipped "+c)
 	}
-	return newRepos, nil
+	return newRepos, warnings, nil
 }
 
 // chooseRepos asks which of candidates to import and returns them in their
@@ -233,6 +292,7 @@ func chooseRepos(candidates []config.Repository) ([]config.Repository, error) {
 
 func init() {
 	importCmd.Flags().BoolVar(&importDryRun, "dry-run", false, "preview only, do not write")
+	importCmd.Flags().BoolVar(&importJSON, "json", false, "output in JSON format (no prompts: needs --dry-run or --yes)")
 	importCmd.Flags().StringVar(&importGitHub, "github", "", "list the repositories of a GitHub user or organization instead of scanning (uses gh)")
 	importCmd.Flags().StringVar(&importProto, "protocol", github.ProtocolSSH, "with --github, clone URL protocol: ssh or https")
 	importCmd.Flags().StringArrayVarP(&importRepos, "repo", "r", nil, "with --github, import this repository instead of choosing from a prompt (repeatable)")

@@ -75,6 +75,7 @@ A source starting with `/` or `~` is a `symlink` when `type` is omitted; any oth
 |---------|----------|------------|
 | `xr repo list` | yes | no |
 | `xr repo sync` | yes | yes |
+| `xr repo import` | yes (needs `--dry-run` or `--yes`) | no |
 | `xr search`, `xr exec`, `xr doctor` | yes | no |
 | `xr worktree list` / `add` / `remove` / `prune` | yes | no |
 | `xr diff file` / `pattern` / `history` | yes | yes |
