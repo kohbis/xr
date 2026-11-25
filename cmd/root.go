@@ -8,6 +8,7 @@ import (
 	"github.com/kohbis/xr/cmd/worktree"
 	"github.com/kohbis/xr/internal/exitcode"
 	"github.com/kohbis/xr/internal/output"
+	"github.com/kohbis/xr/internal/shellcomp"
 	"github.com/spf13/cobra"
 )
 
@@ -34,6 +35,9 @@ Environment:
 }
 
 func Execute() {
+	// Every subcommand is registered by now: package init functions run before
+	// main, and cobra adds its own completion command in InitDefaultCompletionCmd.
+	shellcomp.OfferFlags(rootCmd)
 	if err := rootCmd.Execute(); err != nil {
 		// The command already reported the failure in its own output.
 		if code, ok := exitcode.From(err); ok {
